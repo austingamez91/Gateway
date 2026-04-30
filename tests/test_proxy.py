@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from fastapi import FastAPI, Request
@@ -13,7 +15,13 @@ from gatewaykit.proxy import (
     build_forward_path,
     build_upstream_url,
     retry_delay_seconds,
+    transform_request_body,
+    transform_response_body,
 )
+
+
+def json_loads(body: bytes) -> dict:
+    return json.loads(body.decode())
 
 
 def gateway_config(
@@ -187,6 +195,77 @@ def test_apply_header_transform_adds_removes_and_resolves_values() -> None:
         "X-Request-Start": "123",
         "X-Literal": "value",
     }
+
+
+def test_transform_request_body_maps_source_paths_and_dynamic_values() -> None:
+    transform = parse_config(
+        {
+            "gateway": {"port": 8080},
+            "routes": [
+                {
+                    "path": "/api/users",
+                    "methods": ["POST"],
+                    "upstream": {"url": "http://upstream.test"},
+                    "request_transform": {
+                        "body": {
+                            "mapping": {
+                                "user.id": "userId",
+                                "user.name": "userName",
+                                "meta.source": "$literal:gateway",
+                                "meta.timestamp": "$request_time",
+                            }
+                        }
+                    },
+                }
+            ],
+        }
+    ).routes[0].request_transform.body
+
+    transformed = transform_request_body(
+        b'{"userId":123,"userName":"Ada"}',
+        transform,
+        {"request_time": "100"},
+    )
+
+    assert transformed == (
+        b'{"user":{"id":123,"name":"Ada"},"meta":{"source":"gateway","timestamp":"100"}}'
+    )
+
+
+def test_transform_response_body_wraps_original_body_in_envelope() -> None:
+    transform = parse_config(
+        {
+            "gateway": {"port": 8080},
+            "routes": [
+                {
+                    "path": "/api/users",
+                    "methods": ["GET"],
+                    "upstream": {"url": "http://upstream.test"},
+                    "response_transform": {
+                        "body": {
+                            "envelope": {
+                                "data": "$body",
+                                "gateway_metadata": {
+                                    "served_at": "$response_time",
+                                    "route": "$route_path",
+                                },
+                            }
+                        }
+                    },
+                }
+            ],
+        }
+    ).routes[0].response_transform.body
+
+    transformed = transform_response_body(
+        b'{"ok":true}',
+        transform,
+        {"response_time": "200", "route_path": "/api/users"},
+    )
+
+    assert transformed == (
+        b'{"data":{"ok":true},"gateway_metadata":{"served_at":"200","route":"/api/users"}}'
+    )
 
 
 def test_build_forward_path_keeps_original_path_without_strip_prefix() -> None:
@@ -466,6 +545,146 @@ async def test_response_header_transform_adds_and_removes_headers_before_returni
     assert response.headers["x-served-at"].isdigit()
     assert "server" not in response.headers
     assert "x-powered-by" not in response.headers
+
+
+@pytest.mark.asyncio
+async def test_request_body_mapping_transforms_json_body_before_proxying() -> None:
+    captured_body: dict | None = None
+    captured_content_type: str | None = None
+
+    def handler(request: httpx.Request) -> Response:
+        nonlocal captured_body, captured_content_type
+        captured_body = json_loads(request.content)
+        captured_content_type = request.headers.get("content-type")
+        return Response(200, json={"ok": True})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                request_transform={
+                    "body": {
+                        "mapping": {
+                            "user.id": "userId",
+                            "user.name": "userName",
+                            "meta.source": "$literal:gateway",
+                            "meta.timestamp": "$request_time",
+                        }
+                    }
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.post(
+            "/api/users",
+            content='{"userId":123,"userName":"Ada"}',
+            headers={"Content-Type": "application/json"},
+        )
+
+    assert response.status_code == 200
+    assert captured_body["user"] == {"id": 123, "name": "Ada"}
+    assert captured_body["meta"]["source"] == "gateway"
+    assert captured_body["meta"]["timestamp"].isdigit()
+    assert captured_content_type == "application/json"
+
+
+@pytest.mark.asyncio
+async def test_request_body_mapping_rejects_invalid_json_body() -> None:
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                request_transform={
+                    "body": {
+                        "mapping": {
+                            "user.id": "userId",
+                        }
+                    }
+                }
+            )
+        ),
+        upstream_transport=httpx.ASGITransport(app=mock_upstream_app()),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.post("/api/users", content="not-json")
+
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_request_body"}
+
+
+@pytest.mark.asyncio
+async def test_response_body_envelope_wraps_upstream_json_before_returning() -> None:
+    def handler(_request: httpx.Request) -> Response:
+        return Response(200, json={"id": 123, "name": "Ada"})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                response_transform={
+                    "body": {
+                        "envelope": {
+                            "data": "$body",
+                            "gateway_metadata": {
+                                "served_at": "$response_time",
+                                "route": "$route_path",
+                            },
+                        }
+                    }
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json()["data"] == {"id": 123, "name": "Ada"}
+    assert response.json()["gateway_metadata"]["route"] == "/api/users"
+    assert response.json()["gateway_metadata"]["served_at"].isdigit()
+
+
+@pytest.mark.asyncio
+async def test_response_body_envelope_returns_clean_error_for_invalid_upstream_json() -> None:
+    def handler(_request: httpx.Request) -> Response:
+        return Response(200, content=b"not-json", headers={"Content-Type": "text/plain"})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                response_transform={
+                    "body": {
+                        "envelope": {
+                            "data": "$body",
+                        }
+                    }
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 502
+    assert response.json() == {"error": "invalid_upstream_body"}
 
 
 @pytest.mark.asyncio

@@ -146,9 +146,9 @@ The provided config weights `3003` higher than `3004`, so most responses should 
 - [x] Manual mock upstream demo.
 - [x] Circuit breaker.
 - [x] Request header transforms.
-- [ ] Request body transforms.
+- [x] Request body transforms.
 - [x] Response header transforms.
-- [ ] Response body transforms.
+- [x] Response body transforms.
 - [ ] Active upstream health checks.
 
 ## Notes
@@ -176,4 +176,16 @@ Open circuit breakers return `503` with JSON:
 
 ```json
 {"error":"service_unavailable","retry_after":30}
+```
+
+Body transforms are JSON-only. Invalid JSON request bodies return:
+
+```json
+{"error":"invalid_request_body"}
+```
+
+Invalid JSON upstream bodies return:
+
+```json
+{"error":"invalid_upstream_body"}
 ```

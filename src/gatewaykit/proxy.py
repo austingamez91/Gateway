@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
@@ -11,7 +12,13 @@ import httpx
 from fastapi import Request
 from starlette.responses import Response
 
-from gatewaykit.config import HeaderTransformConfig, RouteConfig, parse_duration_seconds
+from gatewaykit.config import (
+    HeaderTransformConfig,
+    RequestBodyTransformConfig,
+    ResponseBodyTransformConfig,
+    RouteConfig,
+    parse_duration_seconds,
+)
 
 HOP_BY_HOP_HEADERS = {
     "connection",
@@ -60,6 +67,21 @@ async def proxy_request(
         },
     )
     body = await request.body()
+    request_body_transform = route.request_transform.body if route.request_transform else None
+    if request_body_transform is not None:
+        try:
+            body = transform_request_body(
+                body,
+                request_body_transform,
+                context={
+                    "request_time": str(int(request_started_at)),
+                    "route_path": route.path,
+                },
+            )
+        except ValueError:
+            return ProxyResult(json_error("invalid_request_body", 400), failed=False)
+        remove_headers(headers, ["Content-Type"])
+        headers["Content-Type"] = "application/json"
     timeout = parse_duration_seconds(route.timeout or global_timeout)
 
     async with httpx.AsyncClient(transport=transport) as client:
@@ -92,13 +114,108 @@ async def proxy_request(
             "route_path": route.path,
         },
     )
+    response_body = upstream_response.content
+    media_type = upstream_response.headers.get("content-type")
+    response_body_transform = route.response_transform.body if route.response_transform else None
+    if response_body_transform is not None:
+        try:
+            response_body = transform_response_body(
+                response_body,
+                response_body_transform,
+                context={
+                    "request_time": str(int(request_started_at)),
+                    "response_time": str(int(time.time())),
+                    "route_path": route.path,
+                },
+            )
+        except ValueError:
+            return ProxyResult(json_error("invalid_upstream_body", 502), failed=True)
+        remove_headers(response_headers, ["Content-Type"])
+        media_type = "application/json"
     response = Response(
-        content=upstream_response.content,
+        content=response_body,
         status_code=upstream_response.status_code,
         headers=response_headers,
-        media_type=upstream_response.headers.get("content-type"),
+        media_type=media_type,
     )
     return ProxyResult(response, failed=upstream_response.status_code >= 500)
+
+
+def transform_request_body(
+    body: bytes,
+    transform: RequestBodyTransformConfig,
+    context: dict[str, str],
+) -> bytes:
+    source = parse_json_body(body)
+    mapped: dict[str, object] = {}
+    for destination_path, source_path in transform.mapping.items():
+        set_path(mapped, destination_path, resolve_template_value(source_path, source, context))
+    return encode_json(mapped)
+
+
+def transform_response_body(
+    body: bytes,
+    transform: ResponseBodyTransformConfig,
+    context: dict[str, str],
+) -> bytes:
+    original_body = parse_json_body(body)
+    enveloped = resolve_template_tree(transform.envelope, original_body, context)
+    return encode_json(enveloped)
+
+
+def parse_json_body(body: bytes) -> object:
+    try:
+        return json.loads(body.decode() or "{}")
+    except json.JSONDecodeError as exc:
+        raise ValueError("body transform requires JSON") from exc
+
+
+def encode_json(value: object) -> bytes:
+    return json.dumps(value, separators=(",", ":")).encode()
+
+
+def resolve_template_tree(template: object, body: object, context: dict[str, str]) -> object:
+    if isinstance(template, dict):
+        return {
+            key: resolve_template_tree(value, body, context)
+            for key, value in template.items()
+        }
+    if isinstance(template, list):
+        return [resolve_template_tree(item, body, context) for item in template]
+    if isinstance(template, str):
+        return resolve_template_value(template, body, context)
+    return template
+
+
+def resolve_template_value(value: str, body: object, context: dict[str, str]) -> object:
+    if value == "$body":
+        return body
+    if value.startswith("$literal:"):
+        return value.removeprefix("$literal:")
+    if value.startswith("$"):
+        return context.get(value.removeprefix("$"), value)
+    return get_path(body, value)
+
+
+def get_path(value: object, path: str) -> object:
+    current = value
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def set_path(target: dict[str, object], path: str, value: object) -> None:
+    current = target
+    parts = path.split(".")
+    for part in parts[:-1]:
+        next_value = current.setdefault(part, {})
+        if not isinstance(next_value, dict):
+            next_value = {}
+            current[part] = next_value
+        current = next_value
+    current[parts[-1]] = value
 
 
 def apply_header_transform(

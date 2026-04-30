@@ -48,8 +48,8 @@
 - [x] Implement circuit breaker.
 - [x] Implement request header transforms.
 - [x] Implement response header transforms.
-- [ ] Implement request body mapping.
-- [ ] Implement response body envelope.
+- [x] Implement request body mapping.
+- [x] Implement response body envelope.
 - [ ] Implement active upstream health checks.
 - [ ] Consider Redis-backed rate limiting for multi-process or multi-node deployments.
 

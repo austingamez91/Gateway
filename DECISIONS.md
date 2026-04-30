@@ -89,6 +89,7 @@ The design should keep feature hooks small and explicit so partial features do n
 - A manual mock upstream helper is included for local socket-level demos, while automated tests continue to use self-contained in-process upstreams.
 - Circuit breakers are route-scoped and process-local. They count 5xx upstream/gateway outcomes as failures, reset on success, and return 503 without calling upstream while open.
 - Request and response header transforms support add/remove plus dynamic values such as `$request_time`, `$response_time`, `$route_path`, and `$literal:...`.
+- Request body mapping and response envelopes are JSON-only. Invalid JSON request bodies return `400 {"error":"invalid_request_body"}` when body mapping is configured.
 
 ## AI Tool Usage
 
