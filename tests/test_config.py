@@ -87,6 +87,19 @@ def test_rejects_invalid_route_timeout() -> None:
         parse_config(raw)
 
 
+def test_rejects_invalid_rate_limit_window() -> None:
+    raw = minimal_config()
+    raw["gateway"]["global_rate_limit"] = {
+        "requests": 10,
+        "window": "sometimes",
+        "strategy": "fixed_window",
+        "per": "ip",
+    }
+
+    with pytest.raises(ConfigError, match="duration"):
+        parse_config(raw)
+
+
 def test_rejects_malformed_yaml(tmp_path: Path) -> None:
     config_path = tmp_path / "bad.yaml"
     config_path.write_text("gateway: [", encoding="utf-8")

@@ -80,6 +80,9 @@ The design should keep feature hooks small and explicit so partial features do n
 - Hop-by-hop headers are stripped from proxied requests and responses.
 - Global and per-route upstream timeouts are respected for single-upstream proxying.
 - Upstream timeout and network failures return gateway-owned JSON error bodies.
+- Global rate limits act as default route policies; route-level rate limits override them.
+- Fixed-window and sliding-window rate limits are implemented in memory with an async lock.
+- Rate limit buckets are scoped by route path and then by either client IP or a shared global key.
 
 ## AI Tool Usage
 

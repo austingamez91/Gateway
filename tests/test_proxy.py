@@ -16,6 +16,8 @@ def gateway_config(
     strip_prefix: bool = False,
     global_timeout: str = "30s",
     route_timeout: str | None = None,
+    global_rate_limit: dict | None = None,
+    route_rate_limit: dict | None = None,
 ) -> dict:
     route = {
         "path": "/api/users",
@@ -25,8 +27,13 @@ def gateway_config(
     }
     if route_timeout is not None:
         route["timeout"] = route_timeout
+    if route_rate_limit is not None:
+        route["rate_limit"] = route_rate_limit
+    gateway = {"port": 8080, "global_timeout": global_timeout}
+    if global_rate_limit is not None:
+        gateway["global_rate_limit"] = global_rate_limit
     return {
-        "gateway": {"port": 8080, "global_timeout": global_timeout},
+        "gateway": gateway,
         "routes": [route],
     }
 
@@ -345,3 +352,76 @@ async def test_proxy_returns_clean_json_for_upstream_network_failure() -> None:
     assert response.status_code == 502
     assert response.headers["content-type"].startswith("application/json")
     assert response.json() == {"error": "upstream_unavailable"}
+
+
+@pytest.mark.asyncio
+async def test_global_rate_limit_returns_429_before_proxying() -> None:
+    upstream_calls = 0
+
+    def handler(_request: httpx.Request) -> Response:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        return Response(200, json={"ok": True})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                global_rate_limit={
+                    "requests": 1,
+                    "window": "60s",
+                    "strategy": "fixed_window",
+                    "per": "global",
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        first = await client.get("/api/users")
+        second = await client.get("/api/users")
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    retry_after = int(second.headers["retry-after"])
+    assert 1 <= retry_after <= 60
+    assert second.json() == {"error": "rate_limited", "retry_after": retry_after}
+    assert upstream_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_route_rate_limit_overrides_global_rate_limit() -> None:
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                global_rate_limit={
+                    "requests": 1,
+                    "window": "60s",
+                    "strategy": "fixed_window",
+                    "per": "global",
+                },
+                route_rate_limit={
+                    "requests": 2,
+                    "window": "60s",
+                    "strategy": "fixed_window",
+                    "per": "global",
+                },
+            )
+        ),
+        upstream_transport=httpx.ASGITransport(app=mock_upstream_app()),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        first = await client.get("/api/users")
+        second = await client.get("/api/users")
+        third = await client.get("/api/users")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 429

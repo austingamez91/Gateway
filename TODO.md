@@ -36,8 +36,8 @@
 
 ## Priority 3: Valuable Config Features
 
-- [ ] Implement global rate limit.
-- [ ] Implement per-route rate limit override.
+- [x] Implement global rate limit.
+- [x] Implement per-route rate limit override.
 - [ ] Implement API key auth.
 - [ ] Implement simple retry policy for configured status codes.
 - [ ] Implement multiple upstream target selection.

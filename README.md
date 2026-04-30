@@ -62,8 +62,8 @@ This runs the full test suite and prints normal pytest output.
 - [x] `strip_prefix`.
 - [x] Global timeout.
 - [x] Per-route timeout.
-- [ ] Global rate limit.
-- [ ] Per-route rate limit.
+- [x] Global rate limit.
+- [x] Per-route rate limit.
 - [ ] Retry policy.
 - [ ] Multiple upstream targets.
 - [ ] Weighted round robin.
@@ -83,3 +83,9 @@ Gateway-owned upstream failures return JSON:
 
 - `504 {"error":"upstream_timeout"}` when the upstream request times out.
 - `502 {"error":"upstream_unavailable"}` when the upstream cannot be reached.
+
+Rate-limited requests return `429` with JSON:
+
+```json
+{"error":"rate_limited","retry_after":60}
+```

@@ -30,6 +30,12 @@ class RateLimitConfig(StrictModel):
     strategy: Literal["fixed_window", "sliding_window"]
     per: Literal["ip", "global"]
 
+    @field_validator("window")
+    @classmethod
+    def validate_window(cls, window: str) -> str:
+        validate_duration(window)
+        return window
+
 
 class RetryConfig(StrictModel):
     attempts: int = Field(ge=0)

@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from gatewaykit.config import GatewayConfig
+from gatewaykit.policies import InMemoryRateLimiter
 from gatewaykit.proxy import proxy_request
 from gatewaykit.routing import find_route
 
@@ -16,10 +17,13 @@ from gatewaykit.routing import find_route
 def create_app(
     config: GatewayConfig,
     upstream_transport: httpx.AsyncBaseTransport | None = None,
+    rate_limiter: InMemoryRateLimiter | None = None,
 ) -> FastAPI:
     started_at = time.monotonic()
+    limiter = rate_limiter or InMemoryRateLimiter()
     app = FastAPI(title="GatewayKit")
     app.state.config = config
+    app.state.rate_limiter = limiter
 
     @app.get("/health")
     async def health() -> dict[str, int | str]:
@@ -39,6 +43,17 @@ def create_app(
 
         if request.method.upper() not in route.methods:
             return JSONResponse({"error": "method_not_allowed"}, status_code=405)
+
+        rate_limit = await limiter.check(request, route, config)
+        if not rate_limit.allowed:
+            return JSONResponse(
+                {
+                    "error": "rate_limited",
+                    "retry_after": rate_limit.retry_after_seconds,
+                },
+                status_code=429,
+                headers={"Retry-After": str(rate_limit.retry_after_seconds)},
+            )
 
         return await proxy_request(
             request,
