@@ -26,8 +26,8 @@
 
 ## Priority 2: Proxy Correctness And Cheap Wins
 
-- [ ] Strip hop-by-hop headers.
-- [ ] Implement `strip_prefix`.
+- [x] Strip hop-by-hop headers.
+- [x] Implement `strip_prefix`.
 - [ ] Respect global timeout.
 - [ ] Respect per-route timeout.
 - [ ] Return clean JSON for upstream failures.
@@ -41,6 +41,7 @@
 - [ ] Implement API key auth.
 - [ ] Implement simple retry policy for configured status codes.
 - [ ] Implement multiple upstream target selection.
+- [ ] Add manual mock upstream service for local proxy demos.
 
 ## Priority 4: Defer Unless Time Remains
 

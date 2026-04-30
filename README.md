@@ -59,7 +59,7 @@ This runs the full test suite and prints normal pytest output.
 - [x] Route path matching.
 - [x] Method allow-list.
 - [x] Single upstream proxying.
-- [ ] `strip_prefix`.
+- [x] `strip_prefix`.
 - [ ] Global timeout.
 - [ ] Per-route timeout.
 - [ ] Global rate limit.

@@ -34,7 +34,7 @@ async def proxy_request(
 
     upstream_url = build_upstream_url(
         route.upstream.url,
-        request.url.path,
+        build_forward_path(route, request.url.path),
         request.url.query,
     )
     headers = {
@@ -75,6 +75,21 @@ def build_upstream_url(base_url: str, request_path: str, query: str) -> str:
     proxy_path = request_path if request_path.startswith("/") else f"/{request_path}"
     path = f"{base_path}{proxy_path}" if base_path else proxy_path
     return urlunsplit((parts.scheme, parts.netloc, path, query, ""))
+
+
+def build_forward_path(route: RouteConfig, request_path: str) -> str:
+    if not route.strip_prefix:
+        return request_path
+
+    route_path = route.path.rstrip("/")
+    if route_path in {"", "/"}:
+        return request_path
+
+    remainder = request_path[len(route_path) :]
+    if not remainder:
+        return "/"
+
+    return remainder if remainder.startswith("/") else f"/{remainder}"
 
 
 def json_error(error: str, status_code: int) -> Response:

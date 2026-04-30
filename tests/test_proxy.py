@@ -7,17 +7,18 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from httpx import Response
 
 from gatewaykit.app import create_app
-from gatewaykit.config import parse_config
-from gatewaykit.proxy import build_upstream_url
+from gatewaykit.config import RouteConfig, parse_config
+from gatewaykit.proxy import build_forward_path, build_upstream_url
 
 
-def gateway_config(upstream_url: str = "http://upstream.test") -> dict:
+def gateway_config(upstream_url: str = "http://upstream.test", strip_prefix: bool = False) -> dict:
     return {
         "gateway": {"port": 8080},
         "routes": [
             {
                 "path": "/api/users",
                 "methods": ["GET", "POST"],
+                "strip_prefix": strip_prefix,
                 "upstream": {"url": upstream_url},
             }
         ],
@@ -36,6 +37,8 @@ def mock_upstream_app() -> FastAPI:
                 "query": request.url.query,
                 "body": (await request.body()).decode(),
                 "content_type": request.headers.get("content-type"),
+                "connection": request.headers.get("connection"),
+                "te": request.headers.get("te"),
             },
             status_code=201 if request.method == "POST" else 200,
             headers={"X-Upstream": "mock"},
@@ -117,6 +120,40 @@ def test_build_upstream_url_preserves_base_path_and_query() -> None:
     assert url == "http://upstream.test/base/api/users?page=1"
 
 
+def test_build_forward_path_keeps_original_path_without_strip_prefix() -> None:
+    route = route_config(path="/api/users", strip_prefix=False)
+
+    assert build_forward_path(route, "/api/users/123") == "/api/users/123"
+
+
+def test_build_forward_path_strips_matched_prefix() -> None:
+    route = route_config(path="/api/products", strip_prefix=True)
+
+    assert build_forward_path(route, "/api/products/123") == "/123"
+
+
+def test_build_forward_path_strips_exact_match_to_root() -> None:
+    route = route_config(path="/api/products", strip_prefix=True)
+
+    assert build_forward_path(route, "/api/products") == "/"
+
+
+def route_config(path: str, strip_prefix: bool) -> RouteConfig:
+    return parse_config(
+        {
+            "gateway": {"port": 8080},
+            "routes": [
+                {
+                    "path": path,
+                    "methods": ["GET"],
+                    "strip_prefix": strip_prefix,
+                    "upstream": {"url": "http://upstream.test"},
+                }
+            ],
+        }
+    ).routes[0]
+
+
 @pytest.mark.asyncio
 async def test_proxy_uses_longest_prefix_route_upstream() -> None:
     config = parse_config(
@@ -150,3 +187,65 @@ async def test_proxy_uses_longest_prefix_route_upstream() -> None:
 
     assert response.status_code == 200
     assert response.json()["upstream_url"] == "http://specific.test/abcd/efg/hijk"
+
+
+@pytest.mark.asyncio
+async def test_proxy_applies_strip_prefix_before_forwarding() -> None:
+    upstream_transport = httpx.ASGITransport(app=mock_upstream_app())
+    gateway = create_app(
+        parse_config(gateway_config(strip_prefix=True)),
+        upstream_transport=upstream_transport,
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users/123?active=true")
+
+    assert response.status_code == 200
+    assert response.json()["path"] == "/123"
+    assert response.json()["query"] == "active=true"
+
+
+@pytest.mark.asyncio
+async def test_proxy_strips_hop_by_hop_request_headers() -> None:
+    upstream_transport = httpx.ASGITransport(app=mock_upstream_app())
+    gateway = create_app(parse_config(gateway_config()), upstream_transport=upstream_transport)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get(
+            "/api/users",
+            headers={"TE": "trailers"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["te"] is None
+
+
+@pytest.mark.asyncio
+async def test_proxy_strips_hop_by_hop_response_headers() -> None:
+    def handler(_request: httpx.Request) -> Response:
+        return Response(
+            200,
+            json={"ok": True},
+            headers={"Connection": "close", "X-Upstream": "mock"},
+        )
+
+    gateway = create_app(
+        parse_config(gateway_config()),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 200
+    assert response.headers.get("connection") is None
+    assert response.headers["x-upstream"] == "mock"

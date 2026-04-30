@@ -76,7 +76,8 @@ The design should keep feature hooks small and explicit so partial features do n
 - Single upstream proxying is implemented for routes with `upstream.url`.
 - Query strings and request bodies are preserved when proxying.
 - Routes with `upstream.targets` currently return `501` until load balancing is implemented.
-- `strip_prefix` is still deferred, so the original request path is forwarded for now.
+- `strip_prefix` is implemented for single-upstream proxying.
+- Hop-by-hop headers are stripped from proxied requests and responses.
 
 ## AI Tool Usage
 
