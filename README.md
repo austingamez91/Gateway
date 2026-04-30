@@ -8,8 +8,8 @@ Implementation is in progress. The immediate target is the core required behavio
 
 - [x] Config-driven startup.
 - [x] `GET /health`.
-- [ ] Route matching.
-- [ ] Method filtering.
+- [x] Route matching.
+- [x] Method filtering.
 - [ ] Basic proxying.
 - [ ] Self-contained tests.
 
@@ -56,8 +56,8 @@ This runs the full test suite and prints normal pytest output.
 
 - [x] Gateway port.
 - [x] Health endpoint.
-- [ ] Route path matching.
-- [ ] Method allow-list.
+- [x] Route path matching.
+- [x] Method allow-list.
 - [ ] Single upstream proxying.
 - [ ] `strip_prefix`.
 - [ ] Global timeout.

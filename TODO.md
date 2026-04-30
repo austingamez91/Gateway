@@ -17,9 +17,9 @@
 - [x] Load config from `GATEWAY_CONFIG` fallback.
 - [x] Start server on `gateway.port`.
 - [x] Implement `GET /health`.
-- [ ] Implement longest-prefix route matching.
-- [ ] Implement method filtering with `405`.
-- [ ] Implement unmatched route `404`.
+- [x] Implement longest-prefix route matching.
+- [x] Implement method filtering with `405`.
+- [x] Implement unmatched route `404`.
 - [ ] Implement basic proxying to single upstream URL.
 - [ ] Preserve query strings and request body.
 - [ ] Add self-contained tests with mock upstreams.

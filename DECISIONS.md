@@ -41,6 +41,7 @@ The design should keep feature hooks small and explicit so partial features do n
 
 - Route paths are prefix matches.
 - Longest matching route wins.
+- Prefix matches are path-segment aware, so `/api/user` does not match `/api/users`.
 - `GET /health` always bypasses config routes.
 - Query strings are preserved.
 - Hop-by-hop headers are not forwarded.
