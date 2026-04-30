@@ -25,6 +25,12 @@ class AuthResult:
     allowed: bool
 
 
+@dataclass(frozen=True)
+class CircuitBreakerResult:
+    allowed: bool
+    retry_after_seconds: int = 0
+
+
 def check_api_key(request: Request, route: RouteConfig) -> AuthResult:
     if route.auth is None:
         return AuthResult(allowed=True)
@@ -111,3 +117,60 @@ def bucket_identity(request: Request, rate_limit: RateLimitConfig) -> str:
     if request.client is None:
         return "unknown"
     return request.client.host
+
+
+class InMemoryCircuitBreaker:
+    """Route-scoped in-memory circuit breaker."""
+
+    def __init__(self, clock: Callable[[], float] | None = None) -> None:
+        self._clock = clock or time.monotonic
+        self._lock = asyncio.Lock()
+        self._states: dict[str, CircuitBreakerState] = {}
+
+    async def before_request(self, route: RouteConfig) -> CircuitBreakerResult:
+        if route.circuit_breaker is None:
+            return CircuitBreakerResult(allowed=True)
+
+        async with self._lock:
+            state = self._states.get(route.path)
+            if state is None or state.opened_at is None:
+                return CircuitBreakerResult(allowed=True)
+
+            cooldown = parse_duration_seconds(route.circuit_breaker.cooldown)
+            elapsed = self._clock() - state.opened_at
+            if elapsed >= cooldown:
+                self._states[route.path] = CircuitBreakerState()
+                return CircuitBreakerResult(allowed=True)
+
+            return CircuitBreakerResult(False, ceil(cooldown - elapsed))
+
+    async def after_request(self, route: RouteConfig, failed: bool) -> None:
+        if route.circuit_breaker is None:
+            return
+
+        async with self._lock:
+            state = self._states.setdefault(route.path, CircuitBreakerState())
+            now = self._clock()
+            window = parse_duration_seconds(route.circuit_breaker.window)
+
+            if not failed:
+                self._states[route.path] = CircuitBreakerState()
+                return
+
+            state.failure_timestamps = [
+                timestamp for timestamp in state.failure_timestamps if timestamp > now - window
+            ]
+            state.failure_timestamps.append(now)
+
+            if len(state.failure_timestamps) >= route.circuit_breaker.threshold:
+                state.opened_at = now
+
+
+@dataclass
+class CircuitBreakerState:
+    failure_timestamps: list[float] | None = None
+    opened_at: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.failure_timestamps is None:
+            self.failure_timestamps = []

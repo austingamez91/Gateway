@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -25,13 +26,19 @@ REQUEST_EXCLUDED_HEADERS = HOP_BY_HOP_HEADERS | {"host", "content-length"}
 RESPONSE_EXCLUDED_HEADERS = HOP_BY_HOP_HEADERS | {"content-length"}
 
 
+@dataclass(frozen=True)
+class ProxyResult:
+    response: Response
+    failed: bool
+
+
 async def proxy_request(
     request: Request,
     route: RouteConfig,
     upstream_base_url: str,
     global_timeout: str,
     transport: httpx.AsyncBaseTransport | None = None,
-) -> Response:
+) -> ProxyResult:
     upstream_url = build_upstream_url(
         upstream_base_url,
         build_forward_path(route, request.url.path),
@@ -57,21 +64,22 @@ async def proxy_request(
                 route=route,
             )
         except httpx.TimeoutException:
-            return json_error("upstream_timeout", 504)
+            return ProxyResult(json_error("upstream_timeout", 504), failed=True)
         except httpx.RequestError:
-            return json_error("upstream_unavailable", 502)
+            return ProxyResult(json_error("upstream_unavailable", 502), failed=True)
 
     response_headers = {
         key: value
         for key, value in upstream_response.headers.items()
         if key.lower() not in RESPONSE_EXCLUDED_HEADERS
     }
-    return Response(
+    response = Response(
         content=upstream_response.content,
         status_code=upstream_response.status_code,
         headers=response_headers,
         media_type=upstream_response.headers.get("content-type"),
     )
+    return ProxyResult(response, failed=upstream_response.status_code >= 500)
 
 
 async def send_with_retries(

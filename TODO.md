@@ -45,7 +45,7 @@
 
 ## Priority 4: Defer Unless Time Remains
 
-- [ ] Implement circuit breaker.
+- [x] Implement circuit breaker.
 - [ ] Implement request header transforms.
 - [ ] Implement response header transforms.
 - [ ] Implement request body mapping.

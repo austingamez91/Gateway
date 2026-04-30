@@ -144,7 +144,7 @@ The provided config weights `3003` higher than `3004`, so most responses should 
 - [x] Weighted round robin.
 - [x] API key auth.
 - [x] Manual mock upstream demo.
-- [ ] Circuit breaker.
+- [x] Circuit breaker.
 - [ ] Request header transforms.
 - [ ] Request body transforms.
 - [ ] Response header transforms.
@@ -170,4 +170,10 @@ Routes with API key auth require the configured header value. Missing or invalid
 
 ```json
 {"error":"unauthorized"}
+```
+
+Open circuit breakers return `503` with JSON:
+
+```json
+{"error":"service_unavailable","retry_after":30}
 ```

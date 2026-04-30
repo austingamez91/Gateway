@@ -21,6 +21,7 @@ def gateway_config(
     route_rate_limit: dict | None = None,
     auth: dict | None = None,
     retry: dict | None = None,
+    circuit_breaker: dict | None = None,
 ) -> dict:
     route = {
         "path": "/api/users",
@@ -36,6 +37,8 @@ def gateway_config(
         route["auth"] = auth
     if retry is not None:
         route["retry"] = retry
+    if circuit_breaker is not None:
+        route["circuit_breaker"] = circuit_breaker
     gateway = {"port": 8080, "global_timeout": global_timeout}
     if global_rate_limit is not None:
         gateway["global_rate_limit"] = global_rate_limit
@@ -726,3 +729,74 @@ def retry_route_config(backoff: str) -> RouteConfig:
             ],
         }
     ).routes[0]
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_returns_503_without_calling_open_upstream() -> None:
+    upstream_calls = 0
+
+    def handler(_request: httpx.Request) -> Response:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        return Response(503, json={"error": "unavailable"})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                circuit_breaker={
+                    "threshold": 2,
+                    "window": "60s",
+                    "cooldown": "30s",
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        first = await client.get("/api/users")
+        second = await client.get("/api/users")
+        third = await client.get("/api/users")
+
+    assert first.status_code == 503
+    assert second.status_code == 503
+    assert third.status_code == 503
+    assert third.json()["error"] == "service_unavailable"
+    assert 1 <= third.json()["retry_after"] <= 30
+    assert upstream_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_success_resets_gateway_failure_count() -> None:
+    upstream_statuses = [503, 200, 503, 200]
+
+    def handler(_request: httpx.Request) -> Response:
+        return Response(upstream_statuses.pop(0), json={"remaining": len(upstream_statuses)})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                circuit_breaker={
+                    "threshold": 2,
+                    "window": "60s",
+                    "cooldown": "30s",
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        first = await client.get("/api/users")
+        second = await client.get("/api/users")
+        third = await client.get("/api/users")
+
+    assert first.status_code == 503
+    assert second.status_code == 200
+    assert third.status_code == 503

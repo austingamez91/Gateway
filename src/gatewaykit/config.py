@@ -130,6 +130,12 @@ class CircuitBreakerConfig(StrictModel):
     window: str = Field(min_length=1)
     cooldown: str = Field(min_length=1)
 
+    @field_validator("window", "cooldown")
+    @classmethod
+    def validate_duration_fields(cls, duration: str) -> str:
+        validate_duration(duration)
+        return duration
+
 
 class RouteConfig(StrictModel):
     path: str

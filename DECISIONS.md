@@ -87,6 +87,7 @@ The design should keep feature hooks small and explicit so partial features do n
 - Retry policies apply to configured upstream response status codes. `attempts` is interpreted as maximum total upstream attempts, including the first request.
 - Multiple upstream targets use a process-local selector with round-robin or weighted round-robin cursors per route.
 - A manual mock upstream helper is included for local socket-level demos, while automated tests continue to use self-contained in-process upstreams.
+- Circuit breakers are route-scoped and process-local. They count 5xx upstream/gateway outcomes as failures, reset on success, and return 503 without calling upstream while open.
 
 ## AI Tool Usage
 

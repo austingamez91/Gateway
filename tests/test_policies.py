@@ -6,7 +6,7 @@ import pytest
 from fastapi import Request
 
 from gatewaykit.config import GatewayConfig, parse_config
-from gatewaykit.policies import InMemoryRateLimiter, check_api_key
+from gatewaykit.policies import InMemoryCircuitBreaker, InMemoryRateLimiter, check_api_key
 
 
 class FakeClock:
@@ -195,3 +195,69 @@ def test_api_key_auth_accepts_configured_key() -> None:
         ).allowed
         is True
     )
+
+
+def circuit_breaker_config() -> GatewayConfig:
+    return parse_config(
+        {
+            "gateway": {"port": 8080},
+            "routes": [
+                {
+                    "path": "/api/internal",
+                    "methods": ["GET"],
+                    "upstream": {"url": "http://upstream.test"},
+                    "circuit_breaker": {
+                        "threshold": 2,
+                        "window": "10s",
+                        "cooldown": "5s",
+                    },
+                }
+            ],
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_opens_after_threshold_failures() -> None:
+    clock = FakeClock()
+    config = circuit_breaker_config()
+    route = config.routes[0]
+    breaker = InMemoryCircuitBreaker(clock=clock)
+
+    assert (await breaker.before_request(route)).allowed is True
+    await breaker.after_request(route, failed=True)
+    assert (await breaker.before_request(route)).allowed is True
+    await breaker.after_request(route, failed=True)
+
+    blocked = await breaker.before_request(route)
+    assert blocked.allowed is False
+    assert blocked.retry_after_seconds == 5
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_reopens_after_cooldown() -> None:
+    clock = FakeClock()
+    config = circuit_breaker_config()
+    route = config.routes[0]
+    breaker = InMemoryCircuitBreaker(clock=clock)
+
+    await breaker.after_request(route, failed=True)
+    await breaker.after_request(route, failed=True)
+    assert (await breaker.before_request(route)).allowed is False
+
+    clock.advance(5)
+    assert (await breaker.before_request(route)).allowed is True
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_success_resets_failures() -> None:
+    clock = FakeClock()
+    config = circuit_breaker_config()
+    route = config.routes[0]
+    breaker = InMemoryCircuitBreaker(clock=clock)
+
+    await breaker.after_request(route, failed=True)
+    await breaker.after_request(route, failed=False)
+    await breaker.after_request(route, failed=True)
+
+    assert (await breaker.before_request(route)).allowed is True

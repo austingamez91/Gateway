@@ -100,6 +100,18 @@ def test_rejects_invalid_rate_limit_window() -> None:
         parse_config(raw)
 
 
+def test_rejects_invalid_circuit_breaker_duration() -> None:
+    raw = minimal_config()
+    raw["routes"][0]["circuit_breaker"] = {
+        "threshold": 5,
+        "window": "one minute",
+        "cooldown": "30s",
+    }
+
+    with pytest.raises(ConfigError, match="duration"):
+        parse_config(raw)
+
+
 def test_rejects_malformed_yaml(tmp_path: Path) -> None:
     config_path = tmp_path / "bad.yaml"
     config_path.write_text("gateway: [", encoding="utf-8")
