@@ -41,7 +41,7 @@
 - [x] Implement API key auth.
 - [x] Implement simple retry policy for configured status codes.
 - [x] Implement multiple upstream target selection.
-- [ ] Add manual mock upstream service for local proxy demos.
+- [x] Add manual mock upstream service for local proxy demos.
 
 ## Priority 4: Defer Unless Time Remains
 

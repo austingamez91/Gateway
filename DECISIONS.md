@@ -86,6 +86,7 @@ The design should keep feature hooks small and explicit so partial features do n
 - API key auth runs before rate limiting and proxying so unauthorized requests do not consume rate buckets or reach upstreams.
 - Retry policies apply to configured upstream response status codes. `attempts` is interpreted as maximum total upstream attempts, including the first request.
 - Multiple upstream targets use a process-local selector with round-robin or weighted round-robin cursors per route.
+- A manual mock upstream helper is included for local socket-level demos, while automated tests continue to use self-contained in-process upstreams.
 
 ## AI Tool Usage
 

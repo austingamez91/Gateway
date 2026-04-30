@@ -63,6 +63,12 @@ Run tests:
 ./scripts/test
 ```
 
+Run mock upstream for manual demos:
+
+```bash
+./scripts/mock-upstream --port 3001 --name users
+```
+
 Lint:
 
 ```bash

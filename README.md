@@ -52,6 +52,81 @@ curl http://127.0.0.1:8080/health
 
 This runs the full test suite and prints normal pytest output.
 
+## Manual Demo
+
+The automated tests use in-process mock upstreams. For a real local socket demo, run one or more mock upstream services and then start the gateway with `gateway.yaml`.
+
+Terminal 1, users upstream on port `3001`:
+
+```bash
+cd ~/Projects/gateway
+source .venv/bin/activate
+./scripts/mock-upstream --port 3001 --name users
+```
+
+Terminal 2, gateway on configured port `8080`:
+
+```bash
+cd ~/Projects/gateway
+source .venv/bin/activate
+python -m gatewaykit gateway.yaml
+```
+
+Terminal 3, send a request through the gateway:
+
+```bash
+curl -s 'http://127.0.0.1:8080/api/users/123?debug=true' | python -m json.tool
+```
+
+Expected response shape:
+
+```json
+{
+  "upstream": "users",
+  "method": "GET",
+  "path": "/api/users/123",
+  "query": "debug=true",
+  "headers": {
+    "...": "..."
+  },
+  "body": ""
+}
+```
+
+POST bodies are forwarded too:
+
+```bash
+curl -s -X POST 'http://127.0.0.1:8080/api/users?source=demo' \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Ada"}' | python -m json.tool
+```
+
+To demo weighted target selection for `/api/products`, start two more upstreams:
+
+Terminal 4:
+
+```bash
+cd ~/Projects/gateway
+source .venv/bin/activate
+./scripts/mock-upstream --port 3003 --name products-a
+```
+
+Terminal 5:
+
+```bash
+cd ~/Projects/gateway
+source .venv/bin/activate
+./scripts/mock-upstream --port 3004 --name products-b
+```
+
+Then run this a few times:
+
+```bash
+curl -s 'http://127.0.0.1:8080/api/products/sku-123' | python -m json.tool
+```
+
+The provided config weights `3003` higher than `3004`, so most responses should come from `products-a`.
+
 ## Config Feature Checklist
 
 - [x] Gateway port.
@@ -68,6 +143,7 @@ This runs the full test suite and prints normal pytest output.
 - [x] Multiple upstream targets.
 - [x] Weighted round robin.
 - [x] API key auth.
+- [x] Manual mock upstream demo.
 - [ ] Circuit breaker.
 - [ ] Request header transforms.
 - [ ] Request body transforms.
