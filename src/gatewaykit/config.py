@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal
@@ -156,11 +157,25 @@ class RouteConfig(StrictModel):
             normalized.append(stripped)
         return normalized
 
+    @field_validator("timeout")
+    @classmethod
+    def validate_timeout(cls, timeout: str | None) -> str | None:
+        if timeout is None:
+            return None
+        validate_duration(timeout)
+        return timeout
+
 
 class GatewayServerConfig(StrictModel):
     port: int = Field(gt=0, le=65535)
     global_timeout: str = Field(default="30s", min_length=1)
     global_rate_limit: RateLimitConfig | None = None
+
+    @field_validator("global_timeout")
+    @classmethod
+    def validate_global_timeout(cls, timeout: str) -> str:
+        validate_duration(timeout)
+        return timeout
 
 
 class GatewayConfig(StrictModel):
@@ -179,6 +194,27 @@ def validate_path_prefix(path: str) -> str:
     if not path.startswith("/"):
         raise ValueError("path must start with '/'")
     return path
+
+
+def validate_duration(duration: str) -> None:
+    parse_duration_seconds(duration)
+
+
+def parse_duration_seconds(duration: str) -> float:
+    match = re.fullmatch(r"(?P<amount>\d+(?:\.\d+)?)(?P<unit>ms|s|m)", duration.strip())
+    if match is None:
+        raise ValueError("duration must use ms, s, or m units, e.g. '500ms', '5s', or '1m'")
+
+    amount = float(match.group("amount"))
+    if amount <= 0:
+        raise ValueError("duration must be greater than zero")
+
+    unit = match.group("unit")
+    if unit == "ms":
+        return amount / 1000
+    if unit == "m":
+        return amount * 60
+    return amount
 
 
 def parse_config(raw_config: Mapping[str, Any]) -> GatewayConfig:

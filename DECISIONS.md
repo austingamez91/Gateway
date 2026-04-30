@@ -78,6 +78,8 @@ The design should keep feature hooks small and explicit so partial features do n
 - Routes with `upstream.targets` currently return `501` until load balancing is implemented.
 - `strip_prefix` is implemented for single-upstream proxying.
 - Hop-by-hop headers are stripped from proxied requests and responses.
+- Global and per-route upstream timeouts are respected for single-upstream proxying.
+- Upstream timeout and network failures return gateway-owned JSON error bodies.
 
 ## AI Tool Usage
 

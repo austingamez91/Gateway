@@ -11,17 +11,23 @@ from gatewaykit.config import RouteConfig, parse_config
 from gatewaykit.proxy import build_forward_path, build_upstream_url
 
 
-def gateway_config(upstream_url: str = "http://upstream.test", strip_prefix: bool = False) -> dict:
+def gateway_config(
+    upstream_url: str = "http://upstream.test",
+    strip_prefix: bool = False,
+    global_timeout: str = "30s",
+    route_timeout: str | None = None,
+) -> dict:
+    route = {
+        "path": "/api/users",
+        "methods": ["GET", "POST"],
+        "strip_prefix": strip_prefix,
+        "upstream": {"url": upstream_url},
+    }
+    if route_timeout is not None:
+        route["timeout"] = route_timeout
     return {
-        "gateway": {"port": 8080},
-        "routes": [
-            {
-                "path": "/api/users",
-                "methods": ["GET", "POST"],
-                "strip_prefix": strip_prefix,
-                "upstream": {"url": upstream_url},
-            }
-        ],
+        "gateway": {"port": 8080, "global_timeout": global_timeout},
+        "routes": [route],
     }
 
 
@@ -249,3 +255,93 @@ async def test_proxy_strips_hop_by_hop_response_headers() -> None:
     assert response.status_code == 200
     assert response.headers.get("connection") is None
     assert response.headers["x-upstream"] == "mock"
+
+
+@pytest.mark.asyncio
+async def test_proxy_uses_global_timeout_when_route_timeout_is_absent() -> None:
+    captured_timeout: dict[str, float] = {}
+
+    def handler(request: httpx.Request) -> Response:
+        captured_timeout.update(request.extensions["timeout"])
+        return Response(200, json={"ok": True})
+
+    gateway = create_app(
+        parse_config(gateway_config(global_timeout="7s")),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 200
+    assert captured_timeout["connect"] == 7.0
+    assert captured_timeout["read"] == 7.0
+
+
+@pytest.mark.asyncio
+async def test_proxy_route_timeout_overrides_global_timeout() -> None:
+    captured_timeout: dict[str, float] = {}
+
+    def handler(request: httpx.Request) -> Response:
+        captured_timeout.update(request.extensions["timeout"])
+        return Response(200, json={"ok": True})
+
+    gateway = create_app(
+        parse_config(gateway_config(global_timeout="30s", route_timeout="500ms")),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 200
+    assert captured_timeout["connect"] == 0.5
+    assert captured_timeout["read"] == 0.5
+
+
+@pytest.mark.asyncio
+async def test_proxy_returns_clean_json_for_upstream_timeout() -> None:
+    def handler(request: httpx.Request) -> Response:
+        raise httpx.ReadTimeout("too slow", request=request)
+
+    gateway = create_app(
+        parse_config(gateway_config()),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 504
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json() == {"error": "upstream_timeout"}
+
+
+@pytest.mark.asyncio
+async def test_proxy_returns_clean_json_for_upstream_network_failure() -> None:
+    def handler(request: httpx.Request) -> Response:
+        raise httpx.ConnectError("connection failed", request=request)
+
+    gateway = create_app(
+        parse_config(gateway_config()),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 502
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json() == {"error": "upstream_unavailable"}

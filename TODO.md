@@ -28,11 +28,11 @@
 
 - [x] Strip hop-by-hop headers.
 - [x] Implement `strip_prefix`.
-- [ ] Respect global timeout.
-- [ ] Respect per-route timeout.
-- [ ] Return clean JSON for upstream failures.
-- [ ] Document run and test commands in `README.md`.
-- [ ] Document trade-offs in `DECISIONS.md`.
+- [x] Respect global timeout.
+- [x] Respect per-route timeout.
+- [x] Return clean JSON for upstream failures.
+- [x] Document run and test commands in `README.md`.
+- [x] Document trade-offs in `DECISIONS.md`.
 
 ## Priority 3: Valuable Config Features
 

@@ -60,8 +60,8 @@ This runs the full test suite and prints normal pytest output.
 - [x] Method allow-list.
 - [x] Single upstream proxying.
 - [x] `strip_prefix`.
-- [ ] Global timeout.
-- [ ] Per-route timeout.
+- [x] Global timeout.
+- [x] Per-route timeout.
 - [ ] Global rate limit.
 - [ ] Per-route rate limit.
 - [ ] Retry policy.
@@ -78,3 +78,8 @@ This runs the full test suite and prints normal pytest output.
 ## Notes
 
 The full spec is intentionally larger than the time box. See `DECISIONS.md` for priorities, trade-offs, and deferred features.
+
+Gateway-owned upstream failures return JSON:
+
+- `504 {"error":"upstream_timeout"}` when the upstream request times out.
+- `502 {"error":"upstream_unavailable"}` when the upstream cannot be reached.

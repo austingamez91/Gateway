@@ -8,7 +8,7 @@ import httpx
 from fastapi import Request
 from starlette.responses import Response
 
-from gatewaykit.config import RouteConfig
+from gatewaykit.config import RouteConfig, parse_duration_seconds
 
 HOP_BY_HOP_HEADERS = {
     "connection",
@@ -27,6 +27,7 @@ RESPONSE_EXCLUDED_HEADERS = HOP_BY_HOP_HEADERS | {"content-length"}
 async def proxy_request(
     request: Request,
     route: RouteConfig,
+    global_timeout: str,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> Response:
     if route.upstream.url is None:
@@ -50,6 +51,7 @@ async def proxy_request(
                 upstream_url,
                 content=await request.body(),
                 headers=headers,
+                timeout=parse_duration_seconds(route.timeout or global_timeout),
             )
         except httpx.TimeoutException:
             return json_error("upstream_timeout", 504)

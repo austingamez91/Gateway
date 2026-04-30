@@ -71,6 +71,22 @@ def test_rejects_invalid_upstream_shape() -> None:
         parse_config(raw)
 
 
+def test_rejects_invalid_global_timeout() -> None:
+    raw = minimal_config()
+    raw["gateway"]["global_timeout"] = "forever"
+
+    with pytest.raises(ConfigError, match="duration"):
+        parse_config(raw)
+
+
+def test_rejects_invalid_route_timeout() -> None:
+    raw = minimal_config()
+    raw["routes"][0]["timeout"] = "0s"
+
+    with pytest.raises(ConfigError, match="greater than zero"):
+        parse_config(raw)
+
+
 def test_rejects_malformed_yaml(tmp_path: Path) -> None:
     config_path = tmp_path / "bad.yaml"
     config_path.write_text("gateway: [", encoding="utf-8")

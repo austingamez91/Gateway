@@ -40,6 +40,11 @@ def create_app(
         if request.method.upper() not in route.methods:
             return JSONResponse({"error": "method_not_allowed"}, status_code=405)
 
-        return await proxy_request(request, route, upstream_transport)
+        return await proxy_request(
+            request,
+            route,
+            config.gateway.global_timeout,
+            upstream_transport,
+        )
 
     return app
