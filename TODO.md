@@ -51,7 +51,17 @@
 - [x] Implement request body mapping.
 - [x] Implement response body envelope.
 - [ ] Implement active upstream health checks.
-- [ ] Consider Redis-backed rate limiting for multi-process or multi-node deployments.
+
+## Security And Architecture Audit
+
+- [ ] Review auth behavior and secret handling.
+- [ ] Review header forwarding and hop-by-hop stripping.
+- [ ] Review timeout, retry, circuit breaker interactions.
+- [ ] Review rate limiting concurrency assumptions.
+- [ ] Review config validation and failure modes.
+- [ ] Review README commands from a fresh user perspective.
+- [ ] Review DECISIONS.md for clear trade-offs and deferred work.
+- [ ] Run final test and lint commands.
 
 ## Cut If Needed
 
@@ -60,3 +70,4 @@
 - Production-grade config validation.
 - Sliding-window rate limiting if fixed-window is already working.
 - Weighted round robin if simple round robin is already working.
+- Redis-backed rate limiting for multi-process or multi-node deployments.
