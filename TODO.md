@@ -13,8 +13,8 @@
 
 ## Priority 1: Core Requirements
 
-- [ ] Load config from CLI argument.
-- [ ] Load config from `GATEWAY_CONFIG` fallback.
+- [x] Load config from CLI argument.
+- [x] Load config from `GATEWAY_CONFIG` fallback.
 - [ ] Start server on `gateway.port`.
 - [ ] Implement `GET /health`.
 - [ ] Implement longest-prefix route matching.

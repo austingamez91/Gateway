@@ -60,7 +60,7 @@ python -m gatewaykit gateway.yaml
 Run tests:
 
 ```bash
-pytest
+./scripts/test
 ```
 
 Lint:

@@ -41,8 +41,10 @@ GATEWAY_CONFIG=gateway.yaml python -m gatewaykit
 ## Test
 
 ```bash
-pytest
+./scripts/test
 ```
+
+This runs the full test suite and prints normal pytest output.
 
 ## Config Feature Checklist
 
