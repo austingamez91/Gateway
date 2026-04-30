@@ -15,8 +15,8 @@
 
 - [x] Load config from CLI argument.
 - [x] Load config from `GATEWAY_CONFIG` fallback.
-- [ ] Start server on `gateway.port`.
-- [ ] Implement `GET /health`.
+- [x] Start server on `gateway.port`.
+- [x] Implement `GET /health`.
 - [ ] Implement longest-prefix route matching.
 - [ ] Implement method filtering with `405`.
 - [ ] Implement unmatched route `404`.

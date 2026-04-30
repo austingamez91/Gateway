@@ -6,8 +6,8 @@ GatewayKit is a lightweight, config-driven API gateway prototype. It reads a YAM
 
 Implementation is in progress. The immediate target is the core required behavior:
 
-- [ ] Config-driven startup.
-- [ ] `GET /health`.
+- [x] Config-driven startup.
+- [x] `GET /health`.
 - [ ] Route matching.
 - [ ] Method filtering.
 - [ ] Basic proxying.
@@ -38,6 +38,12 @@ Alternative:
 GATEWAY_CONFIG=gateway.yaml python -m gatewaykit
 ```
 
+Verify health from another terminal:
+
+```bash
+curl http://127.0.0.1:8080/health
+```
+
 ## Test
 
 ```bash
@@ -48,8 +54,8 @@ This runs the full test suite and prints normal pytest output.
 
 ## Config Feature Checklist
 
-- [ ] Gateway port.
-- [ ] Health endpoint.
+- [x] Gateway port.
+- [x] Health endpoint.
 - [ ] Route path matching.
 - [ ] Method allow-list.
 - [ ] Single upstream proxying.
