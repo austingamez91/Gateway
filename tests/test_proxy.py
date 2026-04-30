@@ -8,7 +8,7 @@ from httpx import Response
 
 from gatewaykit.app import create_app
 from gatewaykit.config import RouteConfig, parse_config
-from gatewaykit.proxy import build_forward_path, build_upstream_url
+from gatewaykit.proxy import build_forward_path, build_upstream_url, retry_delay_seconds
 
 
 def gateway_config(
@@ -19,6 +19,7 @@ def gateway_config(
     global_rate_limit: dict | None = None,
     route_rate_limit: dict | None = None,
     auth: dict | None = None,
+    retry: dict | None = None,
 ) -> dict:
     route = {
         "path": "/api/users",
@@ -32,6 +33,8 @@ def gateway_config(
         route["rate_limit"] = route_rate_limit
     if auth is not None:
         route["auth"] = auth
+    if retry is not None:
+        route["retry"] = retry
     gateway = {"port": 8080, "global_timeout": global_timeout}
     if global_rate_limit is not None:
         gateway["global_rate_limit"] = global_rate_limit
@@ -519,3 +522,136 @@ async def test_api_key_auth_allows_valid_key_to_proxy() -> None:
 
     assert response.status_code == 200
     assert response.json()["path"] == "/api/users"
+
+
+@pytest.mark.asyncio
+async def test_retry_policy_retries_configured_status_and_returns_success() -> None:
+    attempts = 0
+
+    def handler(_request: httpx.Request) -> Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return Response(503, json={"error": "try again"})
+        return Response(200, json={"ok": True})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                retry={
+                    "attempts": 3,
+                    "backoff": "fixed",
+                    "initial_delay": "1ms",
+                    "on": [503],
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_retry_policy_stops_after_configured_attempts() -> None:
+    attempts = 0
+
+    def handler(_request: httpx.Request) -> Response:
+        nonlocal attempts
+        attempts += 1
+        return Response(503, json={"error": "still unavailable"})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                retry={
+                    "attempts": 3,
+                    "backoff": "fixed",
+                    "initial_delay": "1ms",
+                    "on": [503],
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 503
+    assert response.json() == {"error": "still unavailable"}
+    assert attempts == 3
+
+
+@pytest.mark.asyncio
+async def test_retry_policy_ignores_unconfigured_status_codes() -> None:
+    attempts = 0
+
+    def handler(_request: httpx.Request) -> Response:
+        nonlocal attempts
+        attempts += 1
+        return Response(500, json={"error": "not retried"})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                retry={
+                    "attempts": 3,
+                    "backoff": "fixed",
+                    "initial_delay": "1ms",
+                    "on": [503],
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 500
+    assert attempts == 1
+
+
+def test_retry_delay_uses_fixed_or_exponential_backoff() -> None:
+    fixed_route = retry_route_config("fixed")
+    exponential_route = retry_route_config("exponential")
+
+    assert retry_delay_seconds(fixed_route, completed_attempts=2) == 0.25
+    assert retry_delay_seconds(exponential_route, completed_attempts=1) == 0.25
+    assert retry_delay_seconds(exponential_route, completed_attempts=2) == 0.5
+
+
+def retry_route_config(backoff: str) -> RouteConfig:
+    return parse_config(
+        {
+            "gateway": {"port": 8080},
+            "routes": [
+                {
+                    "path": "/retry",
+                    "methods": ["GET"],
+                    "upstream": {"url": "http://upstream.test"},
+                    "retry": {
+                        "attempts": 3,
+                        "backoff": backoff,
+                        "initial_delay": "250ms",
+                        "on": [503],
+                    },
+                }
+            ],
+        }
+    ).routes[0]

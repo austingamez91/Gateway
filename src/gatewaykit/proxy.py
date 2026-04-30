@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -43,15 +44,19 @@ async def proxy_request(
         for key, value in request.headers.items()
         if key.lower() not in REQUEST_EXCLUDED_HEADERS
     }
+    body = await request.body()
+    timeout = parse_duration_seconds(route.timeout or global_timeout)
 
     async with httpx.AsyncClient(transport=transport) as client:
         try:
-            upstream_response = await client.request(
-                request.method,
-                upstream_url,
-                content=await request.body(),
+            upstream_response = await send_with_retries(
+                client,
+                method=request.method,
+                url=upstream_url,
+                body=body,
                 headers=headers,
-                timeout=parse_duration_seconds(route.timeout or global_timeout),
+                timeout=timeout,
+                route=route,
             )
         except httpx.TimeoutException:
             return json_error("upstream_timeout", 504)
@@ -69,6 +74,47 @@ async def proxy_request(
         headers=response_headers,
         media_type=upstream_response.headers.get("content-type"),
     )
+
+
+async def send_with_retries(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    body: bytes,
+    headers: dict[str, str],
+    timeout: float,
+    route: RouteConfig,
+) -> httpx.Response:
+    max_attempts = max(1, route.retry.attempts) if route.retry else 1
+    attempt = 1
+
+    while True:
+        response = await client.request(
+            method,
+            url,
+            content=body,
+            headers=headers,
+            timeout=timeout,
+        )
+        if route.retry is None:
+            return response
+        if response.status_code not in route.retry.on:
+            return response
+        if attempt >= max_attempts:
+            return response
+
+        await asyncio.sleep(retry_delay_seconds(route, attempt))
+        attempt += 1
+
+
+def retry_delay_seconds(route: RouteConfig, completed_attempts: int) -> float:
+    if route.retry is None:
+        return 0.0
+
+    initial_delay = parse_duration_seconds(route.retry.initial_delay)
+    if route.retry.backoff == "fixed":
+        return initial_delay
+    return initial_delay * (2 ** (completed_attempts - 1))
 
 
 def build_upstream_url(base_url: str, request_path: str, query: str) -> str:

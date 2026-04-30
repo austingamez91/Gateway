@@ -64,7 +64,7 @@ This runs the full test suite and prints normal pytest output.
 - [x] Per-route timeout.
 - [x] Global rate limit.
 - [x] Per-route rate limit.
-- [ ] Retry policy.
+- [x] Retry policy.
 - [ ] Multiple upstream targets.
 - [ ] Weighted round robin.
 - [x] API key auth.

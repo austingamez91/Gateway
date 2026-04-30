@@ -84,6 +84,7 @@ The design should keep feature hooks small and explicit so partial features do n
 - Fixed-window and sliding-window rate limits are implemented in memory with an async lock.
 - Rate limit buckets are scoped by route path and then by either client IP or a shared global key.
 - API key auth runs before rate limiting and proxying so unauthorized requests do not consume rate buckets or reach upstreams.
+- Retry policies apply to configured upstream response status codes. `attempts` is interpreted as maximum total upstream attempts, including the first request.
 
 ## AI Tool Usage
 
