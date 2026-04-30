@@ -8,7 +8,12 @@ from httpx import Response
 
 from gatewaykit.app import create_app
 from gatewaykit.config import RouteConfig, parse_config
-from gatewaykit.proxy import build_forward_path, build_upstream_url, retry_delay_seconds
+from gatewaykit.proxy import (
+    apply_header_transform,
+    build_forward_path,
+    build_upstream_url,
+    retry_delay_seconds,
+)
 
 
 def gateway_config(
@@ -22,6 +27,8 @@ def gateway_config(
     auth: dict | None = None,
     retry: dict | None = None,
     circuit_breaker: dict | None = None,
+    request_transform: dict | None = None,
+    response_transform: dict | None = None,
 ) -> dict:
     route = {
         "path": "/api/users",
@@ -39,6 +46,10 @@ def gateway_config(
         route["retry"] = retry
     if circuit_breaker is not None:
         route["circuit_breaker"] = circuit_breaker
+    if request_transform is not None:
+        route["request_transform"] = request_transform
+    if response_transform is not None:
+        route["response_transform"] = response_transform
     gateway = {"port": 8080, "global_timeout": global_timeout}
     if global_rate_limit is not None:
         gateway["global_rate_limit"] = global_rate_limit
@@ -141,6 +152,41 @@ def test_build_upstream_url_preserves_base_path_and_query() -> None:
     )
 
     assert url == "http://upstream.test/base/api/users?page=1"
+
+
+def test_apply_header_transform_adds_removes_and_resolves_values() -> None:
+    headers = {"X-Debug": "true", "X-Keep": "yes"}
+    transform = parse_config(
+        {
+            "gateway": {"port": 8080},
+            "routes": [
+                {
+                    "path": "/api/users",
+                    "methods": ["GET"],
+                    "upstream": {"url": "http://upstream.test"},
+                    "request_transform": {
+                        "headers": {
+                            "add": {
+                                "X-Gateway": "gatewaykit",
+                                "X-Request-Start": "$request_time",
+                                "X-Literal": "$literal:value",
+                            },
+                            "remove": ["X-Debug"],
+                        }
+                    },
+                }
+            ],
+        }
+    ).routes[0].request_transform.headers
+
+    apply_header_transform(headers, transform, {"request_time": "123"})
+
+    assert headers == {
+        "X-Keep": "yes",
+        "X-Gateway": "gatewaykit",
+        "X-Request-Start": "123",
+        "X-Literal": "value",
+    }
 
 
 def test_build_forward_path_keeps_original_path_without_strip_prefix() -> None:
@@ -342,6 +388,84 @@ async def test_proxy_strips_hop_by_hop_response_headers() -> None:
     assert response.status_code == 200
     assert response.headers.get("connection") is None
     assert response.headers["x-upstream"] == "mock"
+
+
+@pytest.mark.asyncio
+async def test_request_header_transform_adds_and_removes_headers_before_proxying() -> None:
+    captured_headers: dict[str, str | None] = {}
+
+    def handler(request: httpx.Request) -> Response:
+        captured_headers["x-gateway"] = request.headers.get("x-gateway")
+        captured_headers["x-request-start"] = request.headers.get("x-request-start")
+        captured_headers["x-debug"] = request.headers.get("x-debug")
+        return Response(200, json={"ok": True})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                request_transform={
+                    "headers": {
+                        "add": {
+                            "X-Gateway": "gatewaykit",
+                            "X-Request-Start": "$request_time",
+                        },
+                        "remove": ["X-Debug"],
+                    }
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users", headers={"X-Debug": "true"})
+
+    assert response.status_code == 200
+    assert captured_headers["x-gateway"] == "gatewaykit"
+    assert captured_headers["x-request-start"] is not None
+    assert captured_headers["x-debug"] is None
+
+
+@pytest.mark.asyncio
+async def test_response_header_transform_adds_and_removes_headers_before_returning() -> None:
+    def handler(_request: httpx.Request) -> Response:
+        return Response(
+            200,
+            json={"ok": True},
+            headers={"Server": "upstream", "X-Powered-By": "test"},
+        )
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                response_transform={
+                    "headers": {
+                        "add": {
+                            "X-Served-By": "gatewaykit",
+                            "X-Served-At": "$response_time",
+                        },
+                        "remove": ["Server", "X-Powered-By"],
+                    }
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 200
+    assert response.headers["x-served-by"] == "gatewaykit"
+    assert response.headers["x-served-at"].isdigit()
+    assert "server" not in response.headers
+    assert "x-powered-by" not in response.headers
 
 
 @pytest.mark.asyncio

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
@@ -10,7 +11,7 @@ import httpx
 from fastapi import Request
 from starlette.responses import Response
 
-from gatewaykit.config import RouteConfig, parse_duration_seconds
+from gatewaykit.config import HeaderTransformConfig, RouteConfig, parse_duration_seconds
 
 HOP_BY_HOP_HEADERS = {
     "connection",
@@ -39,6 +40,7 @@ async def proxy_request(
     global_timeout: str,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> ProxyResult:
+    request_started_at = time.time()
     upstream_url = build_upstream_url(
         upstream_base_url,
         build_forward_path(route, request.url.path),
@@ -49,6 +51,14 @@ async def proxy_request(
         for key, value in request.headers.items()
         if key.lower() not in REQUEST_EXCLUDED_HEADERS
     }
+    apply_header_transform(
+        headers,
+        route.request_transform.headers if route.request_transform else None,
+        context={
+            "request_time": str(int(request_started_at)),
+            "route_path": route.path,
+        },
+    )
     body = await request.body()
     timeout = parse_duration_seconds(route.timeout or global_timeout)
 
@@ -73,6 +83,15 @@ async def proxy_request(
         for key, value in upstream_response.headers.items()
         if key.lower() not in RESPONSE_EXCLUDED_HEADERS
     }
+    apply_header_transform(
+        response_headers,
+        route.response_transform.headers if route.response_transform else None,
+        context={
+            "request_time": str(int(request_started_at)),
+            "response_time": str(int(time.time())),
+            "route_path": route.path,
+        },
+    )
     response = Response(
         content=upstream_response.content,
         status_code=upstream_response.status_code,
@@ -80,6 +99,35 @@ async def proxy_request(
         media_type=upstream_response.headers.get("content-type"),
     )
     return ProxyResult(response, failed=upstream_response.status_code >= 500)
+
+
+def apply_header_transform(
+    headers: dict[str, str],
+    transform: HeaderTransformConfig | None,
+    context: dict[str, str],
+) -> dict[str, str]:
+    if transform is None:
+        return headers
+
+    remove_headers(headers, transform.remove)
+    for key, value in transform.add.items():
+        headers[key] = resolve_dynamic_value(value, context)
+    return headers
+
+
+def remove_headers(headers: dict[str, str], names: list[str]) -> None:
+    to_remove = {name.lower() for name in names}
+    for key in list(headers):
+        if key.lower() in to_remove:
+            del headers[key]
+
+
+def resolve_dynamic_value(value: str, context: dict[str, str]) -> str:
+    if value.startswith("$literal:"):
+        return value.removeprefix("$literal:")
+    if value.startswith("$"):
+        return context.get(value.removeprefix("$"), value)
+    return value
 
 
 async def send_with_retries(

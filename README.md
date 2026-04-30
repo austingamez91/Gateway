@@ -145,9 +145,9 @@ The provided config weights `3003` higher than `3004`, so most responses should 
 - [x] API key auth.
 - [x] Manual mock upstream demo.
 - [x] Circuit breaker.
-- [ ] Request header transforms.
+- [x] Request header transforms.
 - [ ] Request body transforms.
-- [ ] Response header transforms.
+- [x] Response header transforms.
 - [ ] Response body transforms.
 - [ ] Active upstream health checks.
 
