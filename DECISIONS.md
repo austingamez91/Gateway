@@ -62,7 +62,6 @@ The design should keep feature hooks small and explicit so partial features do n
 
 ## Features To Implement Next With More Time
 
-- Active upstream health checks.
 - Redis-backed or otherwise shared rate limiting for multi-process and multi-node deployments.
 - Stronger config validation and richer startup diagnostics.
 - More production observability around route matches, upstream attempts, retries, rate limits, and circuit state.
@@ -86,7 +85,9 @@ The design should keep feature hooks small and explicit so partial features do n
 - Circuit breakers are route-scoped and process-local. They count 5xx upstream/gateway outcomes as failures, reset on success, and return 503 without calling upstream while open.
 - Request and response header transforms support add/remove plus dynamic values such as `$request_time`, `$response_time`, `$route_path`, and `$literal:...`.
 - Request body mapping and response envelopes are JSON-only. Invalid JSON request bodies return `400 {"error":"invalid_request_body"}` when body mapping is configured. Invalid upstream JSON returns `502 {"error":"invalid_upstream_body"}` when response body envelopes are configured.
-- Active upstream health checks are deferred. The current gateway reacts to upstream failures through timeouts, retries, clean JSON errors, and circuit breakers rather than proactively probing target health.
+- Active upstream health checks run for routes with `upstream.targets` and `health_check`. The checker probes each target's health path in the background, marks targets unhealthy after the configured number of consecutive failures, and clears the unhealthy state after a successful probe.
+- Target selection skips unhealthy targets when at least one healthy target remains. If all targets are marked unhealthy, selection falls back to the configured target list so the request path can still use timeout, retry, clean JSON failure, and circuit breaker behavior.
+- Upstream health state is process-local and in-memory. A production multi-worker or multi-node deployment would need shared state or per-instance behavior that is explicitly accepted.
 
 ## AI Tool Usage
 

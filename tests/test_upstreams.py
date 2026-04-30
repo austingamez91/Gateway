@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from gatewaykit.config import RouteConfig, parse_config
-from gatewaykit.upstreams import InMemoryUpstreamSelector, target_sequence
+from gatewaykit.upstreams import (
+    ActiveHealthChecker,
+    InMemoryUpstreamHealth,
+    InMemoryUpstreamSelector,
+    target_sequence,
+)
 
 
 def single_url_route() -> RouteConfig:
@@ -21,7 +27,10 @@ def single_url_route() -> RouteConfig:
     ).routes[0]
 
 
-def targets_route(balance: str | None = None) -> RouteConfig:
+def targets_route(
+    balance: str | None = None,
+    health_check: dict | None = None,
+) -> RouteConfig:
     upstream: dict = {
         "targets": [
             {"url": "http://a.test", "weight": 2},
@@ -31,18 +40,23 @@ def targets_route(balance: str | None = None) -> RouteConfig:
     if balance is not None:
         upstream["balance"] = balance
 
-    return parse_config(
-        {
-            "gateway": {"port": 8080},
-            "routes": [
-                {
-                    "path": "/api/products",
-                    "methods": ["GET"],
-                    "upstream": upstream,
-                }
-            ],
-        }
-    ).routes[0]
+    route: dict = {
+        "path": "/api/products",
+        "methods": ["GET"],
+        "upstream": upstream,
+    }
+    if health_check is not None:
+        route["health_check"] = health_check
+
+    return parse_config({"gateway": {"port": 8080}, "routes": [route]}).routes[0]
+
+
+def health_check_config(unhealthy_threshold: int = 2) -> dict:
+    return {
+        "path": "/healthz",
+        "interval": "30s",
+        "unhealthy_threshold": unhealthy_threshold,
+    }
 
 
 @pytest.mark.asyncio
@@ -85,3 +99,87 @@ def test_weighted_target_sequence_expands_by_weight() -> None:
         "http://a.test",
         "http://b.test",
     ]
+
+
+@pytest.mark.asyncio
+async def test_selector_skips_unhealthy_targets_when_alternatives_remain() -> None:
+    health = InMemoryUpstreamHealth()
+    selector = InMemoryUpstreamSelector(health)
+    route = targets_route(health_check=health_check_config())
+
+    await health.record(route, "http://b.test", healthy=False)
+    await health.record(route, "http://b.test", healthy=False)
+
+    assert [await selector.select(route) for _ in range(3)] == [
+        "http://a.test",
+        "http://a.test",
+        "http://a.test",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_selector_falls_back_to_all_targets_when_none_are_healthy() -> None:
+    health = InMemoryUpstreamHealth()
+    selector = InMemoryUpstreamSelector(health)
+    route = targets_route(health_check=health_check_config())
+
+    for target_url in ["http://a.test", "http://b.test"]:
+        await health.record(route, target_url, healthy=False)
+        await health.record(route, target_url, healthy=False)
+
+    assert [await selector.select(route) for _ in range(2)] == [
+        "http://a.test",
+        "http://b.test",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_active_health_checker_marks_targets_unhealthy_after_threshold() -> None:
+    config = parse_config(
+        {
+            "gateway": {"port": 8080},
+            "routes": [
+                {
+                    "path": "/api/products",
+                    "methods": ["GET"],
+                    "upstream": {
+                        "targets": [
+                            {"url": "http://a.test"},
+                            {"url": "http://b.test"},
+                        ]
+                    },
+                    "health_check": health_check_config(),
+                }
+            ],
+        }
+    )
+    health = InMemoryUpstreamHealth()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "b.test":
+            return httpx.Response(500)
+        return httpx.Response(204)
+
+    checker = ActiveHealthChecker(config, health, httpx.MockTransport(handler))
+
+    await checker.check_once()
+    await checker.check_once()
+
+    selector = InMemoryUpstreamSelector(health)
+    assert [await selector.select(config.routes[0]) for _ in range(3)] == [
+        "http://a.test",
+        "http://a.test",
+        "http://a.test",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_active_health_checker_recovers_target_after_success() -> None:
+    health = InMemoryUpstreamHealth()
+    route = targets_route(health_check=health_check_config())
+
+    await health.record(route, "http://b.test", healthy=False)
+    await health.record(route, "http://b.test", healthy=False)
+    await health.record(route, "http://b.test", healthy=True)
+
+    assert await health.is_healthy(route, "http://b.test")

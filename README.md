@@ -149,13 +149,13 @@ The provided config weights `3003` higher than `3004`, so most responses should 
 - [x] Request body transforms.
 - [x] Response header transforms.
 - [x] Response body transforms.
-- [ ] Active upstream health checks.
+- [x] Active upstream health checks.
 
 ## Notes
 
 The full spec is intentionally larger than the time box. See `DECISIONS.md` for priorities, trade-offs, and deferred features.
 
-The main deferred config feature is active upstream health checking. GatewayKit still handles upstream failures through timeouts, retries, clean JSON errors, and circuit breakers, but it does not run background health probes against configured upstream targets.
+The remaining deferred work is mostly production hardening: shared state for multi-process or multi-node deployments, richer observability, and broader transform coverage.
 
 Gateway-owned upstream failures return JSON:
 
@@ -179,6 +179,8 @@ Open circuit breakers return `503` with JSON:
 ```json
 {"error":"service_unavailable","retry_after":30}
 ```
+
+Routes with multiple upstream targets and `health_check` run active background probes against each target's configured health path. Consecutive failed probes mark a target unhealthy after `unhealthy_threshold`, and target selection skips unhealthy targets while at least one healthy target remains. If every target is unhealthy, GatewayKit falls back to trying the configured target list so normal timeout, retry, and circuit breaker behavior can still decide the response.
 
 Body transforms are JSON-only. Invalid JSON request bodies return:
 

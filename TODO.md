@@ -50,7 +50,7 @@
 - [x] Implement response header transforms.
 - [x] Implement request body mapping.
 - [x] Implement response body envelope.
-- [ ] Implement active upstream health checks.
+- [x] Implement active upstream health checks.
 
 ## Security And Architecture Audit
 
@@ -66,8 +66,6 @@
 ## Cut If Needed
 
 - Full transform engine.
-- Active background health checks.
 - Production-grade config validation.
-- Sliding-window rate limiting if fixed-window is already working.
 - Weighted round robin if simple round robin is already working.
 - Redis-backed rate limiting for multi-process or multi-node deployments.

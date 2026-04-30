@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 
 import httpx
 from fastapi import FastAPI, Request
@@ -12,7 +15,12 @@ from gatewaykit.config import GatewayConfig
 from gatewaykit.policies import InMemoryCircuitBreaker, InMemoryRateLimiter, check_api_key
 from gatewaykit.proxy import proxy_request
 from gatewaykit.routing import find_route
-from gatewaykit.upstreams import InMemoryUpstreamSelector
+from gatewaykit.upstreams import (
+    ActiveHealthChecker,
+    InMemoryUpstreamHealth,
+    InMemoryUpstreamSelector,
+    health_checked_routes,
+)
 
 
 def create_app(
@@ -24,13 +32,37 @@ def create_app(
 ) -> FastAPI:
     started_at = time.monotonic()
     limiter = rate_limiter or InMemoryRateLimiter()
-    selector = upstream_selector or InMemoryUpstreamSelector()
+    upstream_health = (
+        upstream_selector.health
+        if upstream_selector is not None
+        else InMemoryUpstreamHealth()
+    )
+    selector = upstream_selector or InMemoryUpstreamSelector(upstream_health)
     breaker = circuit_breaker or InMemoryCircuitBreaker()
-    app = FastAPI(title="GatewayKit")
+    health_checker = ActiveHealthChecker(config, upstream_health, upstream_transport)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        health_task: asyncio.Task[None] | None = None
+        if health_checked_routes(config):
+            health_task = asyncio.create_task(health_checker.run())
+
+        try:
+            yield
+        finally:
+            if health_task is not None:
+                health_checker.stop()
+                health_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await health_task
+
+    app = FastAPI(title="GatewayKit", lifespan=lifespan)
     app.state.config = config
     app.state.rate_limiter = limiter
     app.state.upstream_selector = selector
     app.state.circuit_breaker = breaker
+    app.state.upstream_health = upstream_health
+    app.state.health_checker = health_checker
 
     @app.get("/health")
     async def health() -> dict[str, int | str]:
