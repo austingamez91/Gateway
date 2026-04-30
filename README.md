@@ -67,7 +67,7 @@ This runs the full test suite and prints normal pytest output.
 - [ ] Retry policy.
 - [ ] Multiple upstream targets.
 - [ ] Weighted round robin.
-- [ ] API key auth.
+- [x] API key auth.
 - [ ] Circuit breaker.
 - [ ] Request header transforms.
 - [ ] Request body transforms.
@@ -88,4 +88,10 @@ Rate-limited requests return `429` with JSON:
 
 ```json
 {"error":"rate_limited","retry_after":60}
+```
+
+Routes with API key auth require the configured header value. Missing or invalid keys return:
+
+```json
+{"error":"unauthorized"}
 ```

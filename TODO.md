@@ -38,7 +38,7 @@
 
 - [x] Implement global rate limit.
 - [x] Implement per-route rate limit override.
-- [ ] Implement API key auth.
+- [x] Implement API key auth.
 - [ ] Implement simple retry policy for configured status codes.
 - [ ] Implement multiple upstream target selection.
 - [ ] Add manual mock upstream service for local proxy demos.

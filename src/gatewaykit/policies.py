@@ -20,6 +20,19 @@ class RateLimitResult:
     retry_after_seconds: int = 0
 
 
+@dataclass(frozen=True)
+class AuthResult:
+    allowed: bool
+
+
+def check_api_key(request: Request, route: RouteConfig) -> AuthResult:
+    if route.auth is None:
+        return AuthResult(allowed=True)
+
+    candidate = request.headers.get(route.auth.header)
+    return AuthResult(allowed=candidate in route.auth.keys)
+
+
 class InMemoryRateLimiter:
     """Concurrency-safe in-memory rate limiter.
 

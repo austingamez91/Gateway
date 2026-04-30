@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from gatewaykit.config import GatewayConfig
-from gatewaykit.policies import InMemoryRateLimiter
+from gatewaykit.policies import InMemoryRateLimiter, check_api_key
 from gatewaykit.proxy import proxy_request
 from gatewaykit.routing import find_route
 
@@ -43,6 +43,10 @@ def create_app(
 
         if request.method.upper() not in route.methods:
             return JSONResponse({"error": "method_not_allowed"}, status_code=405)
+
+        auth = check_api_key(request, route)
+        if not auth.allowed:
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
 
         rate_limit = await limiter.check(request, route, config)
         if not rate_limit.allowed:

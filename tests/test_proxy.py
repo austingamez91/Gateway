@@ -18,6 +18,7 @@ def gateway_config(
     route_timeout: str | None = None,
     global_rate_limit: dict | None = None,
     route_rate_limit: dict | None = None,
+    auth: dict | None = None,
 ) -> dict:
     route = {
         "path": "/api/users",
@@ -29,6 +30,8 @@ def gateway_config(
         route["timeout"] = route_timeout
     if route_rate_limit is not None:
         route["rate_limit"] = route_rate_limit
+    if auth is not None:
+        route["auth"] = auth
     gateway = {"port": 8080, "global_timeout": global_timeout}
     if global_rate_limit is not None:
         gateway["global_rate_limit"] = global_rate_limit
@@ -425,3 +428,94 @@ async def test_route_rate_limit_overrides_global_rate_limit() -> None:
     assert first.status_code == 200
     assert second.status_code == 200
     assert third.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_api_key_auth_rejects_missing_key_before_proxying() -> None:
+    upstream_calls = 0
+
+    def handler(_request: httpx.Request) -> Response:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        return Response(200, json={"ok": True})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                auth={
+                    "type": "api_key",
+                    "header": "X-API-Key",
+                    "keys": ["sk_live_abc123"],
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users")
+
+    assert response.status_code == 401
+    assert response.json() == {"error": "unauthorized"}
+    assert upstream_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_api_key_auth_rejects_invalid_key_before_proxying() -> None:
+    upstream_calls = 0
+
+    def handler(_request: httpx.Request) -> Response:
+        nonlocal upstream_calls
+        upstream_calls += 1
+        return Response(200, json={"ok": True})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                auth={
+                    "type": "api_key",
+                    "header": "X-API-Key",
+                    "keys": ["sk_live_abc123"],
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users", headers={"X-API-Key": "wrong"})
+
+    assert response.status_code == 401
+    assert response.json() == {"error": "unauthorized"}
+    assert upstream_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_api_key_auth_allows_valid_key_to_proxy() -> None:
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                auth={
+                    "type": "api_key",
+                    "header": "X-API-Key",
+                    "keys": ["sk_live_abc123"],
+                }
+            )
+        ),
+        upstream_transport=httpx.ASGITransport(app=mock_upstream_app()),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        response = await client.get("/api/users", headers={"X-API-Key": "sk_live_abc123"})
+
+    assert response.status_code == 200
+    assert response.json()["path"] == "/api/users"
