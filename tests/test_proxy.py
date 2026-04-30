@@ -13,6 +13,7 @@ from gatewaykit.proxy import build_forward_path, build_upstream_url, retry_delay
 
 def gateway_config(
     upstream_url: str = "http://upstream.test",
+    upstream: dict | None = None,
     strip_prefix: bool = False,
     global_timeout: str = "30s",
     route_timeout: str | None = None,
@@ -25,7 +26,7 @@ def gateway_config(
         "path": "/api/users",
         "methods": ["GET", "POST"],
         "strip_prefix": strip_prefix,
-        "upstream": {"url": upstream_url},
+        "upstream": upstream or {"url": upstream_url},
     }
     if route_timeout is not None:
         route["timeout"] = route_timeout
@@ -206,6 +207,76 @@ async def test_proxy_uses_longest_prefix_route_upstream() -> None:
 
     assert response.status_code == 200
     assert response.json()["upstream_url"] == "http://specific.test/abcd/efg/hijk"
+
+
+@pytest.mark.asyncio
+async def test_proxy_selects_multiple_upstream_targets() -> None:
+    seen_hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> Response:
+        seen_hosts.append(request.url.host or "")
+        return Response(200, json={"host": request.url.host})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                upstream={
+                    "targets": [
+                        {"url": "http://a.test"},
+                        {"url": "http://b.test"},
+                    ],
+                    "balance": "round_robin",
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        first = await client.get("/api/users")
+        second = await client.get("/api/users")
+        third = await client.get("/api/users")
+
+    assert first.json()["host"] == "a.test"
+    assert second.json()["host"] == "b.test"
+    assert third.json()["host"] == "a.test"
+    assert seen_hosts == ["a.test", "b.test", "a.test"]
+
+
+@pytest.mark.asyncio
+async def test_proxy_selects_weighted_upstream_targets() -> None:
+    seen_hosts: list[str] = []
+
+    def handler(request: httpx.Request) -> Response:
+        seen_hosts.append(request.url.host or "")
+        return Response(200, json={"host": request.url.host})
+
+    gateway = create_app(
+        parse_config(
+            gateway_config(
+                upstream={
+                    "targets": [
+                        {"url": "http://a.test", "weight": 2},
+                        {"url": "http://b.test", "weight": 1},
+                    ],
+                    "balance": "weighted_round_robin",
+                }
+            )
+        ),
+        upstream_transport=httpx.MockTransport(handler),
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway),
+        base_url="http://gateway.test",
+    ) as client:
+        for _ in range(4):
+            await client.get("/api/users")
+
+    assert seen_hosts == ["a.test", "a.test", "b.test", "a.test"]
 
 
 @pytest.mark.asyncio

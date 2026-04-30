@@ -40,7 +40,7 @@
 - [x] Implement per-route rate limit override.
 - [x] Implement API key auth.
 - [x] Implement simple retry policy for configured status codes.
-- [ ] Implement multiple upstream target selection.
+- [x] Implement multiple upstream target selection.
 - [ ] Add manual mock upstream service for local proxy demos.
 
 ## Priority 4: Defer Unless Time Remains

@@ -28,14 +28,12 @@ RESPONSE_EXCLUDED_HEADERS = HOP_BY_HOP_HEADERS | {"content-length"}
 async def proxy_request(
     request: Request,
     route: RouteConfig,
+    upstream_base_url: str,
     global_timeout: str,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> Response:
-    if route.upstream.url is None:
-        return json_error("upstream_targets_not_implemented", 501)
-
     upstream_url = build_upstream_url(
-        route.upstream.url,
+        upstream_base_url,
         build_forward_path(route, request.url.path),
         request.url.query,
     )

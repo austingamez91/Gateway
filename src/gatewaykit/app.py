@@ -6,24 +6,28 @@ import time
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from gatewaykit.config import GatewayConfig
 from gatewaykit.policies import InMemoryRateLimiter, check_api_key
 from gatewaykit.proxy import proxy_request
 from gatewaykit.routing import find_route
+from gatewaykit.upstreams import InMemoryUpstreamSelector
 
 
 def create_app(
     config: GatewayConfig,
     upstream_transport: httpx.AsyncBaseTransport | None = None,
     rate_limiter: InMemoryRateLimiter | None = None,
+    upstream_selector: InMemoryUpstreamSelector | None = None,
 ) -> FastAPI:
     started_at = time.monotonic()
     limiter = rate_limiter or InMemoryRateLimiter()
+    selector = upstream_selector or InMemoryUpstreamSelector()
     app = FastAPI(title="GatewayKit")
     app.state.config = config
     app.state.rate_limiter = limiter
+    app.state.upstream_selector = selector
 
     @app.get("/health")
     async def health() -> dict[str, int | str]:
@@ -36,7 +40,7 @@ def create_app(
         "/{path:path}",
         methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
     )
-    async def gateway_route(request: Request) -> JSONResponse:
+    async def gateway_route(request: Request) -> Response:
         route = find_route(request.url.path, config.routes)
         if route is None:
             return JSONResponse({"error": "not_found"}, status_code=404)
@@ -62,6 +66,7 @@ def create_app(
         return await proxy_request(
             request,
             route,
+            await selector.select(route),
             config.gateway.global_timeout,
             upstream_transport,
         )
