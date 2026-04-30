@@ -67,5 +67,4 @@
 
 - Full transform engine.
 - Production-grade config validation.
-- Weighted round robin if simple round robin is already working.
 - Redis-backed rate limiting for multi-process or multi-node deployments.

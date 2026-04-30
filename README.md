@@ -15,16 +15,19 @@ Current implementation coverage:
 
 ## Prerequisites
 
-- Python 3.12.
+- Python 3.12 or newer.
 - Ubuntu/WSL or another Linux-like environment.
 
 ## Setup
 
 ```bash
 cd ~/Projects/gateway
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
+
+If `python3.12` is unavailable, verify `python3 --version` is 3.12 or newer and use `python3 -m venv .venv` instead. The venv command does not install Python; it uses an interpreter that is already present on the system.
 
 ## Run
 
@@ -45,6 +48,8 @@ curl http://127.0.0.1:8080/health
 ```
 
 ## Test
+
+After setup, run the full self-contained test suite with one command:
 
 ```bash
 ./scripts/test

@@ -29,11 +29,11 @@ GatewayKit should be implemented as a request pipeline:
 - Treat `GET /health` as a built-in endpoint outside configured routing.
 - Match request paths by longest route prefix.
 - Apply method filtering before proxying.
-- Apply pre-proxy policies such as rate limit or auth when implemented.
+- Apply pre-proxy policies such as auth, rate limiting, and circuit breaker checks.
 - Resolve the upstream.
 - Rewrite the path if `strip_prefix` is enabled.
 - Forward the request with httpx.
-- Apply response policies when implemented.
+- Apply retries, response transforms, and response-side resilience bookkeeping.
 
 The design should keep feature hooks small and explicit so partial features do not contaminate the core proxy path.
 
@@ -66,14 +66,14 @@ The design should keep feature hooks small and explicit so partial features do n
 - Stronger config validation and richer startup diagnostics.
 - More production observability around route matches, upstream attempts, retries, rate limits, and circuit state.
 
-## Partial Or Deferred Features
+## Feature Status And Trade-Offs
 
-- Single upstream proxying is implemented for routes with `upstream.url`.
+- Proxying is implemented for routes with `upstream.url` and routes with `upstream.targets`.
 - Query strings and request bodies are preserved when proxying.
 - Routes with `upstream.targets` are supported with round-robin and weighted round-robin selection.
-- `strip_prefix` is implemented for single-upstream proxying.
+- `strip_prefix` is implemented for configured routes before forwarding upstream.
 - Hop-by-hop headers are stripped from proxied requests and responses.
-- Global and per-route upstream timeouts are respected for single-upstream proxying.
+- Global and per-route upstream timeouts are respected.
 - Upstream timeout and network failures return gateway-owned JSON error bodies.
 - Global rate limits act as default route policies; route-level rate limits override them.
 - Fixed-window and sliding-window rate limits are implemented in memory with an async lock.
