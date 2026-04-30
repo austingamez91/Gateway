@@ -4,7 +4,7 @@ GatewayKit is a lightweight, config-driven API gateway prototype. It reads a YAM
 
 ## Status
 
-Implementation is in progress. The immediate target is the core required behavior:
+Current implementation coverage:
 
 - [x] Config-driven startup.
 - [x] `GET /health`.
@@ -154,6 +154,8 @@ The provided config weights `3003` higher than `3004`, so most responses should 
 ## Notes
 
 The full spec is intentionally larger than the time box. See `DECISIONS.md` for priorities, trade-offs, and deferred features.
+
+The main deferred config feature is active upstream health checking. GatewayKit still handles upstream failures through timeouts, retries, clean JSON errors, and circuit breakers, but it does not run background health probes against configured upstream targets.
 
 Gateway-owned upstream failures return JSON:
 

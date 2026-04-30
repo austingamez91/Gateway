@@ -54,14 +54,14 @@
 
 ## Security And Architecture Audit
 
-- [ ] Review auth behavior and secret handling.
-- [ ] Review header forwarding and hop-by-hop stripping.
-- [ ] Review timeout, retry, circuit breaker interactions.
-- [ ] Review rate limiting concurrency assumptions.
-- [ ] Review config validation and failure modes.
-- [ ] Review README commands from a fresh user perspective.
-- [ ] Review DECISIONS.md for clear trade-offs and deferred work.
-- [ ] Run final test and lint commands.
+- [x] Review auth behavior and secret handling.
+- [x] Review header forwarding and hop-by-hop stripping.
+- [x] Review timeout, retry, circuit breaker interactions.
+- [x] Review rate limiting concurrency assumptions.
+- [x] Review config validation and failure modes.
+- [x] Review README commands from a fresh user perspective.
+- [x] Review DECISIONS.md for clear trade-offs and deferred work.
+- [x] Run final test and lint commands.
 
 ## Cut If Needed
 

@@ -62,20 +62,16 @@ The design should keep feature hooks small and explicit so partial features do n
 
 ## Features To Implement Next With More Time
 
-- Fixed-window and sliding-window rate limiting.
-- API key auth.
-- Retry policy.
-- Weighted upstream balancing.
-- Circuit breaker.
-- Header transforms.
-- Body transforms.
 - Active upstream health checks.
+- Redis-backed or otherwise shared rate limiting for multi-process and multi-node deployments.
+- Stronger config validation and richer startup diagnostics.
+- More production observability around route matches, upstream attempts, retries, rate limits, and circuit state.
 
 ## Partial Or Deferred Features
 
 - Single upstream proxying is implemented for routes with `upstream.url`.
 - Query strings and request bodies are preserved when proxying.
-- Routes with `upstream.targets` currently return `501` until load balancing is implemented.
+- Routes with `upstream.targets` are supported with round-robin and weighted round-robin selection.
 - `strip_prefix` is implemented for single-upstream proxying.
 - Hop-by-hop headers are stripped from proxied requests and responses.
 - Global and per-route upstream timeouts are respected for single-upstream proxying.
@@ -89,7 +85,8 @@ The design should keep feature hooks small and explicit so partial features do n
 - A manual mock upstream helper is included for local socket-level demos, while automated tests continue to use self-contained in-process upstreams.
 - Circuit breakers are route-scoped and process-local. They count 5xx upstream/gateway outcomes as failures, reset on success, and return 503 without calling upstream while open.
 - Request and response header transforms support add/remove plus dynamic values such as `$request_time`, `$response_time`, `$route_path`, and `$literal:...`.
-- Request body mapping and response envelopes are JSON-only. Invalid JSON request bodies return `400 {"error":"invalid_request_body"}` when body mapping is configured.
+- Request body mapping and response envelopes are JSON-only. Invalid JSON request bodies return `400 {"error":"invalid_request_body"}` when body mapping is configured. Invalid upstream JSON returns `502 {"error":"invalid_upstream_body"}` when response body envelopes are configured.
+- Active upstream health checks are deferred. The current gateway reacts to upstream failures through timeouts, retries, clean JSON errors, and circuit breakers rather than proactively probing target health.
 
 ## AI Tool Usage
 
