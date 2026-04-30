@@ -20,9 +20,9 @@
 - [x] Implement longest-prefix route matching.
 - [x] Implement method filtering with `405`.
 - [x] Implement unmatched route `404`.
-- [ ] Implement basic proxying to single upstream URL.
-- [ ] Preserve query strings and request body.
-- [ ] Add self-contained tests with mock upstreams.
+- [x] Implement basic proxying to single upstream URL.
+- [x] Preserve query strings and request body.
+- [x] Add self-contained tests with mock upstreams.
 
 ## Priority 2: Proxy Correctness And Cheap Wins
 

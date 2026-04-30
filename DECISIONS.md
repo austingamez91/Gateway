@@ -73,7 +73,10 @@ The design should keep feature hooks small and explicit so partial features do n
 
 ## Partial Or Deferred Features
 
-At the start of implementation, all non-core features are considered deferred until the baseline is working and tested. As features are implemented, this section should be updated to reflect exact status.
+- Single upstream proxying is implemented for routes with `upstream.url`.
+- Query strings and request bodies are preserved when proxying.
+- Routes with `upstream.targets` currently return `501` until load balancing is implemented.
+- `strip_prefix` is still deferred, so the original request path is forwarded for now.
 
 ## AI Tool Usage
 

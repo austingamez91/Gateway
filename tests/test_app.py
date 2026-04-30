@@ -49,7 +49,7 @@ def test_matched_route_with_disallowed_method_returns_405() -> None:
     assert response.json() == {"error": "method_not_allowed"}
 
 
-def test_matched_route_uses_longest_prefix() -> None:
+def test_matched_route_without_running_upstream_returns_502() -> None:
     config = parse_config(
         {
             "gateway": {"port": 8080},
@@ -71,5 +71,5 @@ def test_matched_route_uses_longest_prefix() -> None:
 
     response = client.get("/abcd/efg/hijk")
 
-    assert response.status_code == 501
-    assert response.json()["route_path"] == "/abcd/efg"
+    assert response.status_code == 502
+    assert response.json() == {"error": "upstream_unavailable"}

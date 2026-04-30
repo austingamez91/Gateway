@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import time
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from gatewaykit.config import GatewayConfig
+from gatewaykit.proxy import proxy_request
 from gatewaykit.routing import find_route
 
 
-def create_app(config: GatewayConfig) -> FastAPI:
+def create_app(
+    config: GatewayConfig,
+    upstream_transport: httpx.AsyncBaseTransport | None = None,
+) -> FastAPI:
     started_at = time.monotonic()
     app = FastAPI(title="GatewayKit")
     app.state.config = config
@@ -35,12 +40,6 @@ def create_app(config: GatewayConfig) -> FastAPI:
         if request.method.upper() not in route.methods:
             return JSONResponse({"error": "method_not_allowed"}, status_code=405)
 
-        return JSONResponse(
-            {
-                "error": "proxy_not_implemented",
-                "route_path": route.path,
-            },
-            status_code=501,
-        )
+        return await proxy_request(request, route, upstream_transport)
 
     return app

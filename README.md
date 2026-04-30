@@ -10,8 +10,8 @@ Implementation is in progress. The immediate target is the core required behavio
 - [x] `GET /health`.
 - [x] Route matching.
 - [x] Method filtering.
-- [ ] Basic proxying.
-- [ ] Self-contained tests.
+- [x] Basic proxying.
+- [x] Self-contained tests.
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ This runs the full test suite and prints normal pytest output.
 - [x] Health endpoint.
 - [x] Route path matching.
 - [x] Method allow-list.
-- [ ] Single upstream proxying.
+- [x] Single upstream proxying.
 - [ ] `strip_prefix`.
 - [ ] Global timeout.
 - [ ] Per-route timeout.
