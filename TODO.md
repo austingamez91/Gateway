@@ -1,30 +1,60 @@
 # TODO.md
 
-## Now
+## Now: Foundation
 
 - [x] Verify WSL Ubuntu is available.
 - [x] Create project directory at `/home/austin/Projects/gateway`.
 - [x] Create project-local Python virtual environment.
-- [ ] Capture incoming specs in `SPEC.md`.
+- [x] Add provided `gateway.yaml`.
+- [x] Capture incoming specs in `SPEC.md`.
+- [x] Decide stack and architecture.
+- [x] Add Python project metadata and install dependencies.
+- [x] Scaffold source and test directories.
 
-## Next After Specs Arrive
+## Priority 1: Core Requirements
 
-- [ ] Identify the main user/demo flow.
-- [ ] List acceptance criteria.
-- [ ] Decide stack and architecture.
-- [ ] Scaffold the app or service.
-- [ ] Build the first runnable vertical slice.
+- [ ] Load config from CLI argument.
+- [ ] Load config from `GATEWAY_CONFIG` fallback.
+- [ ] Start server on `gateway.port`.
+- [ ] Implement `GET /health`.
+- [ ] Implement longest-prefix route matching.
+- [ ] Implement method filtering with `405`.
+- [ ] Implement unmatched route `404`.
+- [ ] Implement basic proxying to single upstream URL.
+- [ ] Preserve query strings and request body.
+- [ ] Add self-contained tests with mock upstreams.
 
-## Later
+## Priority 2: Proxy Correctness And Cheap Wins
 
-- [ ] Add focused tests or smoke checks.
-- [ ] Improve UX and error states.
-- [ ] Document run commands.
-- [ ] Capture known gaps and shortcuts.
+- [ ] Strip hop-by-hop headers.
+- [ ] Implement `strip_prefix`.
+- [ ] Respect global timeout.
+- [ ] Respect per-route timeout.
+- [ ] Return clean JSON for upstream failures.
+- [ ] Document run and test commands in `README.md`.
+- [ ] Document trade-offs in `DECISIONS.md`.
+
+## Priority 3: Valuable Config Features
+
+- [ ] Implement global rate limit.
+- [ ] Implement per-route rate limit override.
+- [ ] Implement API key auth.
+- [ ] Implement simple retry policy for configured status codes.
+- [ ] Implement multiple upstream target selection.
+
+## Priority 4: Defer Unless Time Remains
+
+- [ ] Implement circuit breaker.
+- [ ] Implement request header transforms.
+- [ ] Implement response header transforms.
+- [ ] Implement request body mapping.
+- [ ] Implement response body envelope.
+- [ ] Implement active upstream health checks.
 
 ## Cut If Needed
 
-- Full auth if a stub is sufficient.
-- Rich styling beyond demo clarity.
-- Broad automated test coverage.
-- Nonessential settings and admin surfaces.
+- Full transform engine.
+- Active background health checks.
+- Production-grade config validation.
+- Sliding-window rate limiting if fixed-window is already working.
+- Weighted round robin if simple round robin is already working.

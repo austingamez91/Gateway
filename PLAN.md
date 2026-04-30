@@ -2,56 +2,125 @@
 
 ## Current Phase
 
-Pre-spec environment setup.
+Implementation setup for GatewayKit.
 
 ## Strategy
 
 Use lightweight specification-driven development:
 
-1. Capture product truth in `SPEC.md`.
-2. Choose the smallest viable architecture in this file.
+1. Keep product truth and assumptions in `SPEC.md`.
+2. Keep architecture and phasing in this file.
 3. Execute from `TODO.md`.
-4. Keep `AGENTS.md` as the project operating manual.
-
-## Initial Build Approach
-
-- Start with one vertical slice from input to output.
-- Keep persistence, auth, and integrations minimal unless the spec makes them central.
-- Select libraries for speed and reliability, not novelty.
-- Make the first runnable version early, then iterate.
-
-## Architecture
-
-TBD after specs arrive.
+4. Keep collaboration and commands in `AGENTS.md`.
+5. Record evaluation-facing trade-offs in `DECISIONS.md`.
 
 ## Stack
 
-TBD after specs arrive.
+- Python 3.12.
+- FastAPI for the ASGI app surface.
+- Uvicorn for local serving.
+- httpx for async upstream requests.
+- PyYAML for config parsing.
+- pytest plus pytest-asyncio for tests.
+- Ruff for fast linting if time allows.
 
-Known base:
+## Architecture
 
-- OS/runtime target: Ubuntu under WSL2.
-- Python base available: Python 3.12.
-- Project venv: `.venv`.
+The gateway should be structured as a small request pipeline:
 
-## Milestones After Specs Arrive
+1. Load config into typed internal objects.
+2. Build a router table from configured route prefixes.
+3. Handle `GET /health` outside the config router.
+4. Match the incoming path by longest configured prefix.
+5. Reject unsupported methods with `405`.
+6. Apply pre-proxy policies that are implemented, such as rate limit or auth.
+7. Resolve upstream target.
+8. Rewrite path if `strip_prefix` is true.
+9. Forward request with httpx.
+10. Apply post-proxy transforms that are implemented.
+11. Return upstream status, headers, and body.
 
-1. Compress incoming specs into `SPEC.md`.
-2. Identify main demo path and acceptance criteria.
-3. Choose stack and project structure.
-4. Build runnable vertical slice.
-5. Add necessary polish, validation, and tests.
-6. Capture remaining gaps and demo notes.
+## Proposed Project Structure
+
+```text
+gateway/
+  gateway.yaml
+  pyproject.toml
+  README.md
+  DECISIONS.md
+  SPEC.md
+  PLAN.md
+  TODO.md
+  AGENTS.md
+  src/gatewaykit/
+    __init__.py
+    __main__.py
+    app.py
+    config.py
+    proxy.py
+    routing.py
+    policies.py
+  tests/
+    test_core.py
+    conftest.py
+```
+
+## Implementation Phases
+
+### Phase 1: Baseline Gateway
+
+- CLI/env config path.
+- YAML loading.
+- FastAPI app factory.
+- Health endpoint.
+- Longest-prefix route matching.
+- Method filtering.
+- Single-upstream proxying.
+- 404 and 405 behavior.
+- Self-contained tests with mock upstream app.
+
+### Phase 2: Proxy Correctness
+
+- Preserve query strings.
+- Forward request body.
+- Strip hop-by-hop headers.
+- Implement `strip_prefix`.
+- Respect global and per-route timeouts.
+- Clean gateway error JSON for upstream failures.
+
+### Phase 3: High-Value Config Features
+
+- Global and per-route in-memory rate limiting.
+- API key auth.
+- Basic retry policy.
+- Multiple upstream targets with round robin or weighted round robin.
+
+### Phase 4: Resilience And Transforms
+
+- Circuit breaker.
+- Header transforms.
+- Body transforms.
+- Active upstream health checks.
 
 ## Risk Register
 
-- Time pressure may force scope cuts.
-- Ambiguous specs may require fast product decisions.
-- External integrations may need fakes, fixtures, or narrow wrappers.
+- The schema is broad relative to the time box.
+- Request/response body transforms can consume a lot of time and are risky if rushed.
+- Active health checks and circuit breakers need state management and careful tests.
+- Over-optimizing architecture could starve core functionality.
+- Under-documenting omissions could hurt the walkthrough.
 
 ## Fallback Rules
 
-- If scope is too broad, cut to the main demo path.
-- If integration access is blocked, mock the boundary cleanly.
-- If styling threatens delivery, use a simple functional UI.
-- If tests threaten delivery, write focused smoke checks around the demo path.
+- Core requirements always beat extra config features.
+- Prefer clean partial implementation with documented gaps over brittle breadth.
+- If a feature needs complex state, add an interface point and document it unless it is already on the critical path.
+- If tests are slow to write, prioritize tests that exercise evaluator-facing behavior.
+
+## Done For Submission
+
+- Repo pushed to GitHub.
+- Tests pass with one command.
+- README and DECISIONS are accurate.
+- Core functionality works from a clean checkout.
+- Known gaps are explicit.
