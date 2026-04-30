@@ -51,6 +51,7 @@
 - [ ] Implement request body mapping.
 - [ ] Implement response body envelope.
 - [ ] Implement active upstream health checks.
+- [ ] Consider Redis-backed rate limiting for multi-process or multi-node deployments.
 
 ## Cut If Needed
 
